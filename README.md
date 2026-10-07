@@ -47,6 +47,41 @@ Because Spark's limits are the design constraint, not the model:
 Stock Pi does not know `/v1/me/quota` or `/v1/queue` exist. That gap is the whole
 reason this wrapper exists.
 
+## Banner
+
+The LEARNINGCODE block banner replaces Pi's header at startup:
+
+```
+  █   ███  █  ███ █  █ ███ █  █ ███ ███ ███ ███ ███
+  █   █   █ █ █ █ █ ██  █  █ ██ █   █   █ █ █ █ █
+  █   ███ ███ ███ ██ █  █  ██ █ █ █ █   █ █ █ █ ███
+  █   █   █ █ █ █ █  █  █  █  █ █ █ █   █ █ █ █ █
+  ███ ███ █ █ █ █ █  █ ███ █  █ ███ ███ ███ ███ ███
+  ────────────────────────────────────────────────
+  The Learning Curve · Sarawak
+  /help commands · /quota today's spend · /hotkeys keys
+```
+
+Colour comes from the active theme, so it stays legible in light and dark. Below
+52 columns it collapses to a wordmark rather than drawing art that will not fit.
+It installs via `ctx.ui.setHeader`, the supported way to brand a fork.
+
+## Other providers
+
+Any `--model` other than `tlc-spark/...` skips the Spark token and the Spark
+health check, so you can work while Spark is down:
+
+```bash
+export OPENCODE_API_KEY=...
+learningcode --model opencode-go/glm-5.3-flash
+```
+
+**OpenCode Zen is excluded.** Zen and Go share one `OPENCODE_API_KEY`, so leaving
+that variable in place authenticates both and exposes Zen's 111 pay-per-use models
+alongside the 29 a Go subscription covers, at up to $20/M output. learningcode
+moves the key into Pi's `auth.json` under `opencode-go` alone, which leaves Zen
+credential-less so it never registers. Set `LEARNINGCODE_ALLOW_ZEN=1` to opt in.
+
 ## Configuration
 
 `~/.learningcode/agent/models.json` is created on first run and **never

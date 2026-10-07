@@ -177,3 +177,70 @@ test("--token is ignored, with a warning, for a non-Spark model", async () => {
   );
   assert.match(stderr, /only applies to tlc-spark/);
 });
+
+test("the banner renders the word as readable block art and degrades when narrow", async () => {
+  const jiti = createJiti(import.meta.url);
+  const mod = await jiti.import("../extensions/banner.ts");
+
+  const art = mod.bannerArt();
+  assert.equal(art.length, 5, "banner is five rows tall");
+
+  // Every letter of LEARNINGCODE must have a glyph, or a row renders as blank.
+  for (const line of art) {
+    assert.match(line, /\u2588/, `row should contain blocks: ${JSON.stringify(line)}`);
+    assert.doesNotMatch(line, /undefined/, "a missing glyph would leak into the art");
+  }
+
+  // Row 1 is the top of the glyphs; row 5 is the baseline. LEARNINGCODE is
+  // mostly flat-topped, so the first row should be dense, and the L at the
+  // start is a bare stem with only its foot filled.
+  assert.match(art[4], /^\u2588\u2588\u2588 \u2588\u2588\u2588/, "bottom row starts with L's foot then E");
+
+  const width = mod.bannerWidth();
+  assert.ok(width >= 45 && width <= 60, `banner should suit an 80 column terminal, got ${width}`);
+
+  // A theme stub is enough: the component only calls fg().
+  const theme = { fg: (_token, text) => text };
+  const banner = mod.createBanner(theme);
+
+  const wide = banner.render(100);
+  assert.ok(wide.length > 7, "wide render includes art, rule, tagline and hints");
+  assert.ok(wide.every((line) => line.startsWith("  ") || line === ""), "everything is indented");
+
+  const narrow = banner.render(40);
+  assert.ok(narrow.length < wide.length, "narrow terminals get the compact wordmark");
+  assert.match(narrow.join("\n"), /learningcode/);
+  assert.doesNotMatch(narrow.join("\n"), /\u2588/, "no block art when it cannot fit");
+});
+
+test("banner art is rejected for letters with no glyph", async () => {
+  const jiti = createJiti(import.meta.url);
+  const mod = await jiti.import("../extensions/banner.ts");
+  assert.throws(() => mod.bannerArt("ZZ"), /no glyph/);
+});
+
+test("the banner extension installs a header from session_start", async () => {
+  const jiti = createJiti(import.meta.url);
+  const mod = await jiti.import("../extensions/banner.ts");
+
+  let handler;
+  mod.default({ on: (event, fn) => event === "session_start" && (handler = fn) });
+  assert.equal(typeof handler, "function", "must subscribe to session_start");
+
+  // setHeader lives on the event's UI context, not on the ExtensionAPI itself.
+  let headerFactory;
+  await handler({}, { hasUI: true, mode: "tui", ui: { setHeader: (f) => (headerFactory = f) } });
+  assert.equal(typeof headerFactory, "function", "setHeader must receive a factory");
+
+  const component = headerFactory({}, { fg: (_t, text) => text });
+  assert.equal(typeof component.render, "function");
+  assert.ok(component.render(100).some((line) => line.includes("\u2588")));
+
+  // Print and JSON runs load this extension too, but have no header to replace.
+  for (const ctx of [
+    { hasUI: true, mode: "print", ui: { setHeader: () => assert.fail("print mode must not set a header") } },
+    { hasUI: false, mode: "tui", ui: { setHeader: () => assert.fail("no-UI runs must not set a header") } },
+  ]) {
+    await handler({}, ctx);
+  }
+});

@@ -13,6 +13,7 @@ import {
 	agentDir,
 	sparkBaseUrl,
 } from "../lib/config.mjs";
+import { GO_PROVIDER, saveProviderKey } from "../lib/auth.mjs";
 import { ensureSparkProvider, modelsPath, retargetProvider } from "../lib/models.mjs";
 import { hasToken, looksLikeToken, resolveToken, writeCachedToken } from "../lib/token.mjs";
 
@@ -213,6 +214,7 @@ async function main() {
 	// are pure prompt-token spend against a 32K ceiling, so they stay off.
 	forced.push("--no-skills");
 	forced.push("--extension", join(here, "..", "extensions", "spark-quota.ts"));
+	forced.push("--extension", join(here, "..", "extensions", "banner.ts"));
 	if (process.env.LEARNINGCODE_PI_FLAGS) {
 		forced.push(...process.env.LEARNINGCODE_PI_FLAGS.split(/\s+/).filter(Boolean));
 	}
@@ -278,14 +280,32 @@ async function main() {
 		}
 	}
 
+	const childEnv = { ...process.env };
+
+	// Pi reads provider credentials from auth.json before the environment, and
+	// auth.json is keyed per provider. Storing the key under opencode-go alone
+	// authenticates Go while leaving Zen credential-less, so its 111 pay-per-use
+	// models never register. Zen and Go otherwise share OPENCODE_API_KEY, so
+	// leaving the env var in place would expose both.
+	const goKey = process.env.LEARNINGCODE_GO_KEY || process.env.OPENCODE_API_KEY;
+	if (goKey && process.env.LEARNINGCODE_ALLOW_ZEN !== "1") {
+		await saveProviderKey(dir, GO_PROVIDER, goKey);
+		delete childEnv.OPENCODE_API_KEY;
+		delete childEnv.LEARNINGCODE_GO_KEY;
+	} else if (goKey) {
+		process.stderr.write(
+			"learningcode: LEARNINGCODE_ALLOW_ZEN=1 exposes OpenCode Zen, which bills per token.\n",
+		);
+	}
+
 	const child = spawn(process.execPath, [piEntry, ...forced, ...toPi], {
 		stdio: "inherit",
 		env: {
-			...process.env,
+			...childEnv,
 			[PI_AGENT_DIR_ENV]: dir,
 			SPARK_BASE_URL: sparkBaseUrl(),
 			// Unset rather than empty when not on Spark: Pi treats an empty key as
-			// configured for some providers, which would shadow OPENCODE_API_KEY.
+			// configured for some providers, which would shadow the Go credential.
 			...(token ? { [TOKEN_ENV]: token } : {}),
 		},
 	});
