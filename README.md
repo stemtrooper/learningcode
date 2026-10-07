@@ -1,55 +1,140 @@
 # learningcode
 
-A terminal coding agent for TLC students, wired to [Spark](../spark) — the
-inference gateway that holds per-student tokens, timetable policy, seat limits
-and weekly quota.
+A terminal coding agent for **The Learning Curve** students, running on TLC's own
+inference through **TLC-Spark**.
 
-Students run one command:
+`learningcode` is a purpose-built client for the TLC-Spark token plan. It is not a
+general-purpose AI coding tool: the model, the quota and the seat limits all belong
+to TLC, and every token you spend comes out of your course allocation.
+
+---
+
+## You will need a TLC-Spark token
+
+`learningcode` cannot reach a model on its own. It connects to the TLC-Spark
+gateway, which checks who you are and whether you are allowed to use it right now.
+
+**Ask your teacher for a Spark API token.** In the Spark bench, go to
+**Issue / rotate token**. The token is shown **once** and cannot be retrieved
+afterwards, so copy it immediately. It looks like `spark_live_…`.
+
+Without a token, `learningcode` will not start a conversation. That is by design:
+there is no shared school key and no fallback to somebody else's account.
+
+---
+
+## Requirements
+
+| | |
+|---|---|
+| **Node.js** | **22.19.0 or newer** (24.x LTS recommended) |
+| **Disk** | about 120 MB |
+| **Network** | must reach `spark.learning.com.my` |
+| **Token** | your personal `spark_live_…` from the Spark bench |
+| **Terminal** | 51+ columns for the banner; 99+ for the large one |
+
+Node 22.19 is the floor because the underlying agent runtime requires it. If you
+install Node and `npm i` only *warns*, check `node --version` — an older Node
+produces a confusing error later rather than at install time.
+
+---
+
+## Install
+
+### Windows (PowerShell)
+
+```powershell
+node --version
+npm install -g @stemtrooper/learningcode
+learningcode --version
+```
+
+If PowerShell refuses to run the command because script execution is disabled:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+### macOS / Linux
 
 ```bash
-npm i -g @stemtrooper/learningcode
+node --version
+npm install -g @stemtrooper/learningcode
+learningcode --version
+```
+
+### Termux (Android)
+
+No root and no `proot-distro` needed.
+
+```bash
+pkg install nodejs-lts npm
+node --version
+npm install -g @stemtrooper/learningcode
+learningcode --version
+```
+
+Install `npm` explicitly: Termux stopped bundling it with Node at 25.3.0.
+Prefer `nodejs-lts` (24.x) over `nodejs` (26.x).
+
+---
+
+## First run
+
+```bash
+cd ~/your-project
 learningcode
 ```
 
-On first run it asks for the personal `spark_live_` token from the Spark bench,
-caches it with `0600`, writes the TLC-Spark provider config, and hands off to
-Pi with the model pinned.
+It asks for your Spark token, stores it with owner-only permissions in
+`~/.learningcode/agent/spark-token`, and writes its configuration. The token is
+only ever read from your own machine.
+
+You now have an agent that can read files, run shell commands, and edit code in
+the directory you started it from. **It runs those commands on your machine, as
+you.** Nothing runs on a microcontroller, and Spark never executes anything on
+your behalf.
+
+---
+
+## Using it
+
+Type a request in plain language.
 
 ```
-baseURL  https://spark.learning.com.my/v1
-model    TLC-Spark
+write a function that reads notes.txt and returns the average resistance
+why does my ESP32 reset when I power the servo
+explain this error: "Brown detector failed"
 ```
 
-## What students get
+Useful commands, typed inside the session:
 
-Pi's four built-in tools — `read`, `bash`, `edit`, `write` — against
-Qwen3.8-27B. Two extra commands, because Spark is not a plain OpenAI endpoint:
-
-| Command | Why it exists |
+| Command | What it does |
 |---|---|
-| `/quota` | Tokens used against today's limit, and whether AI is enabled for your account |
-| `/seats` | Live seat queue, so a student can see why a turn is waiting |
+| `/help` | list everything available |
+| `/quota` | your token spend today |
+| `/seats` | how many seats are free |
+| `/model` | switch model |
+| `/hotkeys` | keyboard shortcuts |
 
-`session_start` also warns once if you cross 80% of your daily quota or if a
-teacher has switched AI off for your account.
+`/quota` and `/seats` talk to Spark directly. They are the two commands a stock
+AI coding tool does not have, because those endpoints are not part of any public
+API.
 
-## Why not just ship Pi?
+One-off, non-interactive:
 
-Because Spark's limits are the design constraint, not the model:
+```bash
+learningcode -p "explain main.py"
+learningcode -c                    # continue your last session
+learningcode --mode json           # machine-readable output
+```
 
-- **32K max context, 16K default.** Agent sessions burn this fast. `learningcode`
-  starts Pi with `--no-skills`, since skills are pure prompt-token spend.
-- **One active generation per student.** Subagents and parallel tool calls would
-  only earn `429`s. Pi is serial by default and this wrapper does not turn that off.
-- **250K tokens per week.** Frugality is the product, so the budget is visible
-  instead of mysterious.
+---
 
-Stock Pi does not know `/v1/me/quota` or `/v1/queue` exist. That gap is the whole
-reason this wrapper exists.
+## What it looks like
 
-## Banner
-
-The LEARNINGCODE block banner replaces Pi's header at startup:
+The TLC brand theme and banner ship with the package, so there is nothing to
+configure.
 
 ```
   ██╗     ███████╗ █████╗ ██████╗ ███╗   ██╗██╗███╗   ██╗ ██████╗  ██████╗ ██████╗ ██████╗ ███████╗
@@ -58,139 +143,121 @@ The LEARNINGCODE block banner replaces Pi's header at startup:
   ██║     ██╔══╝  ██╔══██║██╔══██╗██║╚██╗██║██║██║╚██╗██║██║   ██║██║     ██║   ██║██║  ██║██╔══╝
   ███████╗███████╗██║  ██║██║  ██║██║ ╚████║██║██║ ╚████║╚██████╔╝╚██████╗╚██████╔╝██████╔╝███████╗
   ╚══════╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝╚═╝  ╚═══╝ ╚═════╝  ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝
-  ═════════════════════════════════════════════════════════════════════════════════════════════════
   The Learning Curve · Sarawak
-  /help commands · /quota today's spend · /hotkeys keys
 ```
 
-The figlet "ANSI Shadow" face, 97 columns wide, kept verbatim because the
-double-line box characters only align if every row keeps its exact offset.
+On a narrower terminal it steps down to a condensed banner, then to the wordmark,
+rather than drawing art that would be clipped.
 
-It steps down through three tiers, because a phone will never have 97 columns and
-clipping box characters looks like a rendering bug rather than a design:
+A footer shows your remaining quota whenever you are connected to Spark:
 
-| Terminal width | Shows |
+```
+  █████░░░░░ 50%  125k / 250k today
+```
+
+---
+
+## Troubleshooting
+
+**`Node 22.19.0 or newer is required`**
+Upgrade Node, then reinstall: `npm i -g @stemtrooper/learningcode`.
+
+**`No Spark API token configured`**
+You do not have a token yet, or it is not cached. Run `learningcode --login` to
+enter a new one. If you never had one, ask your teacher.
+
+**`Token rejected (401)`**
+The token is wrong, or it was rotated and the old one no longer works.
+`learningcode --login`.
+
+**`AI off — ask your teacher` / `AI disabled for your account`**
+Spark has AI switched off for your account — usually a timetable window or a
+policy setting. This is not something you can fix.
+
+**`You already have a generation running`**
+Spark allows one active generation per student. Stop the running one first.
+
+**`Every seat is taken` / queue position**
+All seats are busy. `learningcode` prints your position; try again shortly.
+
+**The banner looks like plain text**
+Your terminal is narrower than 51 columns. Widen it.
+
+---
+
+## Configuration
+
+Everything lives in `~/.learningcode/agent/`. Nothing is uploaded anywhere except
+to Spark, and no telemetry is sent.
+
+| Variable | Purpose |
 |---|---|
-| 99 or more | the figlet face above |
-| 51 to 98 | a condensed 4 row face, 47 columns |
-| under 51 | the wordmark |
+| `LEARNINGCODE_DIR` | config location (default `~/.learningcode/agent`) |
+| `LEARNINGCODE_SPARK_BASE_URL` | point at a different Spark deployment |
+| `LEARNINGCODE_TOKEN` | supply a token without using the cached file |
+| `LEARNINGCODE_THEME` | `tlc-dark` (default), `tlc-light`, or any Pi theme |
+| `LEARNINGCODE_PI_FLAGS` | extra flags passed to the agent on every launch |
 
-The condensed tier still spells LEARNINGCODE:
+```bash
+learningcode --show-config     # show resolved paths and settings
+learningcode --login           # enter a new token
+learningcode --list-models     # every reachable model
+learningcode --theme dark      # use the upstream theme instead of TLC's
+```
 
-\\n  █   ███  █  ███ █ █ ███ █ █ ███ ███ ███ ███ ███
-  █   █   █ █ █ █ ███  █  ███ █   █   █ █ █ █ █
-  █   ███ ███ ███ █ █  █  █ █ █ █ █   █ █ █ █ ███
-  ███ ███ █ █ █ █ █ █ ███ █ █ ███ ███ ███ ███ ███
-\\n
-Colour comes from the active theme, so it stays legible in light and dark.
+**Your edits are kept.** If you change the theme or the model configuration,
+upgrading `learningcode` will not overwrite your copy.
 
-It installs via `ctx.ui.setHeader`, the supported way to brand a fork.
+---
 
-## Other providers
+## For educators
 
-Any `--model` other than `tlc-spark/...` skips the Spark token and the Spark
-health check, so you can work while Spark is down:
+<details>
+<summary>Running a local Spark, and other model providers</summary>
+
+**Local bench.** `learningcode --base-url http://localhost:3000/v1` points the
+client at a Spark running on your own machine, for demos without spending course
+quota.
+
+**Other providers.** Any `--model` other than `tlc-spark/…` skips the Spark token
+and health check entirely:
 
 ```bash
 export OPENCODE_API_KEY=...
 learningcode --model opencode-go/glm-5.3-flash
 ```
 
-**OpenCode Zen is excluded.** Zen and Go share one `OPENCODE_API_KEY`, so leaving
-that variable in place authenticates both and exposes Zen's 111 pay-per-use models
-alongside the 29 a Go subscription covers, at up to $20/M output. learningcode
-moves the key into Pi's `auth.json` under `opencode-go` alone, which leaves Zen
-credential-less so it never registers. Set `LEARNINGCODE_ALLOW_ZEN=1` to opt in.
+This uses **your own** provider account and **your own** credits, with no Spark
+quota, seat limit or audit trail. `learningcode` deliberately excludes OpenCode
+Zen, which bills per token, so a stale entry cannot silently spend money. It is
+still not something to hand to students.
 
-## Theme
+**Seat awareness.** Spark enforces one active generation per student, so the
+client runs strictly serially with subagents off. Expect a 429 rather than
+parallel fan-out.
 
-Two TLC themes ship with the package and are seeded into
-`~/.learningcode/agent/themes/` on first run:
+</details>
 
-| Theme | Accent | Sampled from |
-|---|---|---|
-| `tlc-dark` | `#29c8f2` | `TLC_BLACKBGND.png` |
-| `tlc-light` | `#0dacd6` | `TLC_WHITEBGND.png` |
+---
 
-The values are read out of the logo pixels, not eyeballed. The logo ships two
-cyans because the darker one has to hold contrast on a white field, which maps
-exactly onto Pi's light/dark split.
+## How it works
 
-A seeded theme is **never overwritten**, so an edit survives upgrades. Override
-the default with `--theme`, or `LEARNINGCODE_THEME=tlc-light`. To try Pi's own:
+`learningcode` is a thin wrapper around [Pi](https://github.com/earendil-works/pi),
+an open-source coding agent by Mario Zechner. It adds the TLC-Spark provider
+configuration, the TLC theme and banner, and the quota and seat commands.
 
-```bash
-learningcode --theme dark
-```
+The underlying model is **Qwen3.8-27B**, served through TLC-Spark. Every turn is a
+separate request, takes a seat, and spends quota — an agent session that reads ten
+files costs roughly eleven turns. That is why the footer exists.
 
-28 of Pi's 56 colour tokens are re-tinted: the accent, borders, greys, markdown,
-syntax highlighting, diff colours, selected backgrounds, and the thinking-level
-ramp. Semantic colours (red, green, yellow) are left alone, because those mean
-error, success and warning rather than anything about the brand. The thinking ramp
-runs grey to cyan and keeps red at the top, where it still means "this is getting
-expensive".
-
-The banner does **not** follow the theme. It uses the brand cyan directly, the way
-Pi's own logo does, because a wordmark that changes colour with whatever theme is
-active stops being a wordmark. It picks the right one of the two cyans from the
-terminal's colour mode.
-
-## Footer
-
-While connected to Spark, a footer shows today's token spend:
-
-```
-  █████░░░░░ 50%  125k / 250k today
-```
-
-Spark's quota endpoint is not part of the OpenAI API, so no stock harness shows
-this. It polls at most every two minutes, since Spark allows one active
-generation per student and a per-turn refresh would add latency to the thing the
-student is waiting on. When AI is switched off for an account the footer says so
-instead of showing a bar.
-
-Off Spark, or with no token, it says so rather than drawing an empty bar that would
-read as "you have spent nothing".
-
-## Configuration
-
-`~/.learningcode/agent/models.json` is created on first run and **never
-overwritten** — local edits survive upgrades. The provider is seeded with these
-compatibility flags, each of which matches a field Spark either rejects or drops:
-
-| Flag | Value | Spark behaviour |
-|---|---|---|
-| `supportsDeveloperRole` | `false` | message union is `system \| user \| assistant \| tool`; there is no `developer` |
-| `maxTokensField` | `"max_tokens"` | `v1.ts` reads `body.max_tokens` only |
-| `supportsReasoningEffort` | `false` | not forwarded to the runtime |
-| `supportsStore` | `false` | not implemented |
-
-Environment variables:
-
-| Variable | Purpose |
-|---|---|
-| `LEARNINGCODE_DIR` | agent directory (default `~/.learningcode/agent`) |
-| `LEARNINGCODE_SPARK_BASE_URL` | point at another Spark deployment |
-| `LEARNINGCODE_TOKEN` | Spark token, skips the cached file |
-| `LEARNINGCODE_PI_FLAGS` | extra flags appended to every launch |
-
-```bash
-learningcode --show-config      # resolved paths, model, token prefix
-learningcode --base-url http://localhost:3000/v1   # local bench
-learningcode --login            # re-enter a rotated token
-learningcode -c                 # continue last session
-learningcode -p "explain main.py"
-learningcode --mode json        # machine-readable event stream
-```
-
-Anything not listed as a `learningcode` flag is passed straight to Pi.
-
-## Pinning
-
-`@earendil-works/pi-coding-agent` is pinned to an exact version, not a range. Pi
-ships breaking changes daily, and a student's install must not change underneath
-them mid-term. Bump it deliberately, after testing against a live pod.
+Pi is pinned to an exact version on purpose: the runtime ships breaking changes
+often, and a student's install must not change underneath them mid-term.
 
 ## Licence
 
-MIT. Depends on Pi, also MIT. See [LICENSE](LICENSE).
+MIT. `learningcode` is distributed under the MIT licence and depends on Pi, which
+is also MIT. See [LICENSE](LICENSE).
+
+Not affiliated with, endorsed by, or connected to Pi, OpenCode, Anomaly, or any of
+the model providers reachable through this client. "The Learning Curve", TLC and
+Spark are trademarks of The Learning Curve.

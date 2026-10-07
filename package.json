@@ -1,6 +1,6 @@
 {
 	"name": "@stemtrooper/learningcode",
-	"version": "0.3.0",
+	"version": "0.3.1",
 	"description": "TLC Spark coding agent for students: Pi wired to the Spark OpenAI-compatible endpoint with per-student tokens, quota and seat-queue awareness.",
 	"type": "module",
 	"license": "MIT",
@@ -13,7 +13,8 @@
 		"lib",
 		"extensions",
 		"README.md",
-		"LICENSE"
+		"LICENSE",
+		"NOTICE"
 	],
 	"scripts": {
 		"start": "node ./bin/learningcode.mjs",
