@@ -1,0 +1,51 @@
+name: learningcode tests
+
+# Runs the suite on every push, and covers the three platforms a student might
+# use. Nothing in this project ran anywhere but one Windows machine until now,
+# which is exactly the kind of gap that only shows up on someone else's laptop.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A new push makes an in-flight run irrelevant.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: node ${{ matrix.node }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # 22 is the floor Pi requires; 24 is the current LTS line. Pinning only
+        # one would hide a break on the other.
+        node: [22, 24]
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # The suite is pure: no network, no API keys. The subprocess tests set
+      # PI_OFFLINE so Pi cannot try to refresh a provider catalog and hang.
+      - name: Test
+        run: npm test
+
+      # Catches a broken "files" list before a publish does. The extension that
+      # renders the banner is loaded by path at runtime, so if it ever falls out
+      # of the tarball the installed CLI throws on startup and only a student
+      # finds out.
+      - name: Check the published tarball
+        run: npm pack --dry-run
