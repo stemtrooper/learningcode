@@ -114,12 +114,19 @@ Useful commands, typed inside the session:
 | `/help` | list everything available |
 | `/quota` | your token spend today |
 | `/seats` | how many seats are free |
+| `/spark-login` | check your TLC-Spark token, or find out how to get a new one |
 | `/model` | switch model |
 | `/hotkeys` | keyboard shortcuts |
 
-`/quota` and `/seats` talk to Spark directly. They are the two commands a stock
-AI coding tool does not have, because those endpoints are not part of any public
-API.
+`/quota`, `/seats` and `/spark-login` talk to Spark directly. They are the commands a
+stock AI coding tool does not have, because those endpoints are not part of any
+public API.
+
+**Getting a new TLC-Spark token.** Use `/spark-login` to check the one you have;
+it tells you whether Spark still accepts it. To actually replace it, exit and run
+`learningcode --login`, which prompts without echoing. It is deliberately *not* a
+`/` command: typing a token into the agent's own input box would leave it in your
+scrollback, which is the wrong thing to do on a shared lab machine.
 
 One-off, non-interactive:
 

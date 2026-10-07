@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { execFile } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -89,53 +90,89 @@ test("provider definition tracks the env override", () => {
 	}
 });
 
-test("the quota extension registers /quota, /seats and a session_start hook", async () => {
-	const jiti = createJiti(import.meta.url);
-	const mod = await jiti.import("../extensions/spark-quota.ts");
-	const factory = mod.default;
-	assert.equal(typeof factory, "function", "extension must default-export a factory");
+test("the Spark extension registers its commands and a session_start hook", async () => {
+  const jiti = createJiti(import.meta.url);
+  const mod = await jiti.import("../extensions/spark-quota.ts");
+  assert.equal(typeof mod.default, "function", "extension must default-export a factory");
 
-	const commands = new Map();
-	const handlers = new Map();
-	factory({
-		registerCommand: (name, spec) => commands.set(name, spec),
-		on: (event, handler) => handlers.set(event, handler),
-	});
+  const commands = new Map();
+  const handlers = new Map();
+  mod.default({
+    registerCommand: (name, spec) => commands.set(name, spec),
+    on: (event, handler) => handlers.set(event, handler),
+  });
 
-	assert.deepEqual([...commands.keys()].sort(), ["quota", "seats"]);
+  assert.deepEqual([...commands.keys()].sort(), ["quota", "seats", "spark-login"]);
 
-	for (const spec of commands.values()) {
-		assert.equal(typeof spec.description, "string");
-		assert.equal(typeof spec.handler, "function");
-	}
+  for (const spec of commands.values()) {
+    assert.equal(typeof spec.description, "string");
+    assert.equal(typeof spec.handler, "function");
+  }
 
-	assert.ok(handlers.has("session_start"), "startup quota check must be wired");
+  assert.ok(handlers.has("session_start"), "startup quota check must be wired");
 
-	// Both commands must degrade to a notification, never throw, when Spark is
-	// unreachable or the token is missing.
-	for (const [name, spec] of commands) {
-		const notices = [];
-		await spec.handler("", { ui: { notify: (m, level) => notices.push([m, level]) } });
-		assert.equal(notices.length, 1, `${name} should notify exactly once`);
-		assert.equal(notices[0][1], "warning", `${name} should warn when Spark is unreachable`);
-	}
+  // Every command must degrade to a notification, never throw, when Spark is
+  // unreachable or no token is loaded.
+  for (const [name, spec] of commands) {
+    const notices = [];
+    await spec.handler("", { ui: { notify: (message, level) => notices.push([message, level]) } });
+    assert.equal(notices.length, 1, name + " should notify exactly once");
+    assert.equal(notices[0][1], "warning", name + " should warn when Spark is unreachable");
+  }
 });
+
+test("the Spark extension never accepts or echoes a pasted token", async () => {
+  const jiti = createJiti(import.meta.url);
+  const source = readFileSync(
+    new URL("../extensions/spark-quota.ts", import.meta.url),
+    "utf-8",
+  );
+
+  // The point of /spark-login is to verify and guide, not to collect a secret.
+  // Pi's input dialog cannot mask, so a token typed there would sit in scrollback,
+  // and Pi caches resolved env values so a mid-session change would not apply.
+  assert.ok(!source.includes("ui.input"), "must not prompt for a token in the TUI");
+  assert.ok(!source.includes("promptSecret"), "must not reuse the raw-mode secret prompt");
+  // It must not read the full cached token, only a prefix for display.
+  assert.ok(source.includes("cachedTokenPrefix"), "uses the prefix helper");
+  assert.ok(!/readCachedToken/.test(source), "must not read the raw token");
+});
+
+test("/spark-login explains what to do when no token is loaded", async () => {
+  const jiti = createJiti(import.meta.url);
+  const mod = await jiti.import("../extensions/spark-quota.ts");
+
+  // This test process has no SPARK_API_KEY, which is the interesting path: the
+  // student has launched without a token and needs to be told the next step.
+  const commands = new Map();
+  mod.default({ registerCommand: (name, spec) => commands.set(name, spec), on: () => {} });
+
+  const notices = [];
+  await commands.get("spark-login").handler("", {
+    ui: { notify: (message, level) => notices.push([message, level]) },
+  });
+
+  assert.equal(notices.length, 1);
+  assert.equal(notices[0][1], "warning");
+  assert.match(notices[0][0], /learningcode --login/, "points at the masked login command");
+});
+
 /** Run the launcher with a clean environment, returning stdout+stderr. */
 const launch = (args, env = {}) =>
-  run(process.execPath, [launcher, ...args], {
-    cwd: repoRoot,
-    // PI_OFFLINE stops Pi refreshing provider catalogs over the network, which
-    // would otherwise leave a subprocess test waiting on a socket.
-    timeout: 60_000,
-    env: {
-      PATH: process.env.PATH,
-      SystemRoot: process.env.SystemRoot,
-      PI_OFFLINE: "1",
-      PI_SKIP_VERSION_CHECK: "1",
-      LEARNINGCODE_DIR: env.LEARNINGCODE_DIR ?? (globalThis.__lcDir ??= ""),
-      ...env,
-    },
-  });
+	run(process.execPath, [launcher, ...args], {
+		cwd: repoRoot,
+		// PI_OFFLINE stops Pi refreshing provider catalogs over the network, which
+		// would otherwise leave a subprocess test waiting on a socket.
+		timeout: 60_000,
+		env: {
+			PATH: process.env.PATH,
+			SystemRoot: process.env.SystemRoot,
+			PI_OFFLINE: "1",
+			PI_SKIP_VERSION_CHECK: "1",
+			LEARNINGCODE_DIR: env.LEARNINGCODE_DIR ?? (globalThis.__lcDir ??= ""),
+			...env,
+		},
+	});
 
 test("a non-Spark --model needs no Spark token and skips the Spark health check", async () => {
   const dir = await scratch();

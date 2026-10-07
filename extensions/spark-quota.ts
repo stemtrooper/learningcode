@@ -1,4 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { cachedTokenPrefix } from "../lib/token.mjs";
+import { agentDir } from "../lib/config.mjs";
 
 /**
  * Spark-aware status for the learningcode client.
@@ -17,13 +19,13 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 const BASE_URL = (process.env.SPARK_BASE_URL || "https://spark.learning.com.my/v1").replace(/\/+$/, "");
 const TOKEN = process.env.SPARK_API_KEY || "";
 
-async function call(path: string): Promise<{ ok: true; body: unknown } | { ok: false; error: string }> {
+async function call(path: string): Promise<{ ok: true; body: unknown } | { ok: false; error: string; status?: number }> {
 	if (!TOKEN) return { ok: false, error: "no Spark token in the environment" };
 	try {
 		const response = await fetch(`${BASE_URL}${path}`, {
 			headers: { Authorization: `Bearer ${TOKEN}` },
 		});
-		if (!response.ok) return { ok: false, error: `HTTP ${response.status}` };
+		if (!response.ok) return { ok: false, error: `HTTP ${response.status}`, status: response.status };
 		return { ok: true, body: await response.json() };
 	} catch (error) {
 		return { ok: false, error: error instanceof Error ? error.message : "unreachable" };
@@ -81,6 +83,71 @@ export default function sparkQuota(pi: ExtensionAPI) {
 			ctx.ui.notify(
 				result.ok ? queueLine(result.body) : `seat info unavailable: ${result.error}`,
 				result.ok ? "info" : "warning",
+			);
+		},
+	});
+
+	/**
+	 * Check the TLC-Spark token and say what to do about it.
+	 *
+	 * This deliberately does not accept a pasted token. Two constraints make that
+	 * the wrong place to type a secret:
+	 *
+	 *   - Pi's input dialog has no mask option, so the value would sit in scrollback
+	 *     in plain text, which on a shared lab machine is worse than the masked
+	 *     prompt `learningcode --login` already uses.
+	 *   - Pi caches resolved environment values, so a token set mid-session would
+	 *     not reliably take effect until the next launch anyway.
+	 *
+	 * So this reports whether the token Spark is actually seeing is still good,
+	 * which is the question a student has after rotating it, and points at the
+	 * command that does the work.
+	 */
+	pi.registerCommand("spark-login", {
+		description: "Check your TLC-Spark token, or get a new one",
+		handler: async (_args, ctx) => {
+			const prefix = await cachedTokenPrefix(agentDir()).catch(() => undefined);
+
+			if (!TOKEN) {
+				ctx.ui.notify(
+					"No TLC-Spark token loaded. Exit and run:  learningcode --login",
+					"warning",
+				);
+				return;
+			}
+
+			const result = await call("/me/quota");
+
+			if (result.ok) {
+				const body = result.body as Record<string, unknown>;
+				const used = num(body.tokensUsed);
+				const limit = num(body.dailyTokenLimit);
+				ctx.ui.notify(
+					[
+						`Token OK${prefix ? ` (${prefix}…)` : ""}`,
+						`${used.toLocaleString()}/${limit.toLocaleString()} tokens today`,
+						"Rotating it? Exit and run:  learningcode --login",
+					].join("  |  "),
+					"info",
+				);
+				return;
+			}
+
+			if (result.status === 401 || result.status === 403) {
+				ctx.ui.notify(
+					[
+						`Spark rejected your token${prefix ? ` (${prefix}…)` : ""}.`,
+						"It was probably rotated, which revokes the old one.",
+						"Exit and run:  learningcode --login",
+					].join(" "),
+					"warning",
+				);
+				return;
+			}
+
+			ctx.ui.notify(
+				`Cannot reach Spark at ${BASE_URL} (${result.error}). Check your network.`,
+				"warning",
 			);
 		},
 	});
