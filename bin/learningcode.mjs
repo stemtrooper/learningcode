@@ -8,13 +8,16 @@ import {
 	MODEL_ID,
 	PI_AGENT_DIR_ENV,
 	PROVIDER_ID,
+	REQUIRED_NODE,
 	TOKEN_ENV,
 	UserError,
 	agentDir,
+	compareVersions,
 	sparkBaseUrl,
 } from "../lib/config.mjs";
 import { GO_PROVIDER, saveProviderKey } from "../lib/auth.mjs";
 import { ensureSparkProvider, modelsPath, retargetProvider } from "../lib/models.mjs";
+import { ensureThemes, preferredTheme } from "../lib/themes.mjs";
 import { hasToken, looksLikeToken, resolveToken, writeCachedToken } from "../lib/token.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -115,6 +118,27 @@ function readModel(toPi) {
 	return undefined;
 }
 
+/**
+ * Fail early and legibly on an unsupported Node.
+ *
+ * `engines` in package.json only makes npm warn, and a warning scrolls past on
+ * a lab machine. The install then succeeds and Pi dies somewhere deep in its own
+ * start-up with a stack trace, which tells a student nothing. Set
+ * LEARNINGCODE_SKIP_NODE_CHECK=1 to bypass if the machine genuinely works.
+ */
+function checkNodeVersion() {
+	if (process.env.LEARNINGCODE_SKIP_NODE_CHECK === "1") return;
+	const running = process.versions.node;
+	if (compareVersions(running, REQUIRED_NODE) >= 0) return;
+
+	throw new UserError(
+		`Node ${REQUIRED_NODE} or newer is required; this is Node ${running}.\n` +
+			"  winget upgrade --id OpenJS.NodeJS.22\n" +
+			"  (or download the LTS build from nodejs.org)\n" +
+			"  Then reinstall: npm i -g @stemtrooper/learningcode",
+	);
+}
+
 function fail(message, code = 1) {
 	process.stderr.write(`learningcode: ${message}\n`);
 	process.exit(code);
@@ -189,6 +213,8 @@ async function main() {
 		return;
 	}
 
+	checkNodeVersion();
+
 	const dir = agentDir();
 	const piEntry = resolvePiEntry();
 	if (!piEntry) {
@@ -203,17 +229,29 @@ async function main() {
 		await retargetProvider(dir, baseUrl);
 	}
 	await ensureSparkProvider(dir);
+	await ensureThemes(dir);
 
 	// `--login` forces a fresh paste even when a token is already cached.
 	const forced = [];
 	const requestedModel = readModel(toPi);
 	const effectiveModel = requestedModel ?? `${PROVIDER_ID}/${MODEL_ID}`;
 	if (!requestedModel) forced.push("--model", effectiveModel);
+
+	// Default to the TLC theme, but never override an explicit choice: --theme on
+	// the command line, or LEARNINGCODE_THEME in the environment.
+	const userPickedTheme = toPi.some(
+		(arg) => arg === "--theme" || arg.startsWith("--theme="),
+	);
+	if (!userPickedTheme && !process.env.LEARNINGCODE_THEME) {
+		forced.push("--theme", preferredTheme());
+	}
+
 	// Spark enforces one active generation per student, so subagents and parallel
 	// tool calls would only earn 429s. Pi is serial by default; skills and rules
 	// are pure prompt-token spend against a 32K ceiling, so they stay off.
 	forced.push("--no-skills");
 	forced.push("--extension", join(here, "..", "extensions", "spark-quota.ts"));
+	forced.push("--extension", join(here, "..", "extensions", "footer.ts"));
 	forced.push("--extension", join(here, "..", "extensions", "banner.ts"));
 	if (process.env.LEARNINGCODE_PI_FLAGS) {
 		forced.push(...process.env.LEARNINGCODE_PI_FLAGS.split(/\s+/).filter(Boolean));

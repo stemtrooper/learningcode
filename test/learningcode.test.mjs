@@ -191,17 +191,21 @@ test("the banner keeps the figlet art intact and collapses when it cannot fit", 
     assert.match(line, /^[\u2588\u2550-\u255D ]+$/, "row must be art characters only");
   }
 
-  // The face only lines up because each row keeps its exact offset: the L's top
-  // row starts flush left, the rest are indented one column. Losing that makes
-  // the whole banner look broken rather than merely misaligned.
-  assert.ok(art[0].startsWith("\u2588\u2588\u2557"), "row 0 should start flush with L's top bar");
-  assert.ok(art[1].startsWith(" \u2588\u2588\u2551"), "row 1 should be indented one column");
-  assert.ok(art[art.length - 1].startsWith(" \u255A"), "last row should open with the L's foot");
+  // Every row must start flush left. An earlier paste of this art carried a
+  // leading space on rows 2 to 6, which slid every letter's body one column
+  // right of its own top bar. Nothing in a banner looks more broken than that,
+  // so it is asserted rather than trusted.
+  art.forEach((line, i) => {
+    assert.ok(!line.startsWith(" "), "row " + i + " must start flush left");
+  });
+  assert.ok(art[0].startsWith("\u2588\u2588\u2557"), "row 0 opens with the L's top bar");
+  assert.ok(art[1].startsWith("\u2588\u2588\u2551"), "row 1 continues the L's stem flush");
+  assert.ok(art[art.length - 1].startsWith("\u255A"), "last row opens with the L's foot");
 
   // The art is wider than a classic 80 column terminal, which is why the
   // fallback exists. Pin the real number so a change is a deliberate decision.
   const width = mod.bannerWidth();
-  assert.equal(width, 101, "art width changed; re-check the 80 column fallback");
+  assert.equal(width, 97, "art width changed; re-check the 80 column fallback");
   assert.ok(width > 80, "if this ever fits 80 columns the fallback can be widened");
 
   const theme = { fg: (_token, text) => text };
@@ -216,8 +220,8 @@ test("the banner keeps the figlet art intact and collapses when it cannot fit", 
   }
   assert.ok(wide.every((line) => line.startsWith("  ") || line === ""), "everything is indented");
 
-  // 100 columns is one short of the art, so the wordmark shows instead.
-  const narrow = banner.render(100);
+  // 96 columns is one short of the art, so the wordmark shows instead.
+  const narrow = banner.render(96);
   assert.match(narrow.join("\n"), /learningcode/);
   assert.doesNotMatch(narrow.join("\n"), /[\u2588\u2550-\u255D]/, "no art when it cannot fit");
   assert.ok(narrow.length < wide.length, "narrow terminals get the compact wordmark");
@@ -247,4 +251,159 @@ test("the banner extension installs a header from session_start", async () => {
   ]) {
     await handler({}, ctx);
   }
+});
+
+test("the Node version floor is enforced before anything else runs", async () => {
+  const { compareVersions, REQUIRED_NODE } = await import("../lib/config.mjs");
+
+  assert.equal(REQUIRED_NODE, "22.19.0", "must match Pi's engines floor");
+
+  // Numeric, not lexicographic: "22.9.0" is older than "22.19.0" and a string
+  // compare would wave it through.
+  assert.equal(compareVersions("22.9.0", "22.19.0"), -1);
+  assert.equal(compareVersions("22.19.0", "22.19.0"), 0);
+  assert.equal(compareVersions("22.23.2", "22.19.0"), 1);
+  assert.equal(compareVersions("18.20.8", "22.19.0"), -1);
+  assert.equal(compareVersions("24.21.0", "22.19.0"), 1);
+  assert.equal(compareVersions("v22.23.2", "22.19.0"), 1, "tolerates a leading v");
+  assert.equal(compareVersions("22.19", "22.19.0"), 0, "missing patch counts as zero");
+
+  // This machine runs a supported Node, so the check must let a real launch
+  // through rather than tripping on everyone. A non-Spark model is used so the
+  // run does not stop at the missing Spark token.
+  const dir = await scratch();
+  globalThis.__lcDir = dir;
+  const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf-8"));
+  const { stdout } = await launch(["--model", "opencode-go/glm-5.3-flash", "--show-config"]);
+  assert.match(stdout, new RegExp("version\\s+" + pkg.version.replace(/\./g, "\\.")));
+  assert.doesNotMatch(stdout, /Node .* or newer is required/, "supported Node passes the check");
+});
+
+test("engines advertises the floor so npm warns during install too", async () => {
+  const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf-8"));
+  assert.match(pkg.engines.node, /^>=22\./, "engines should mirror the runtime check");
+});
+
+test("TLC themes seed once and a student's edit is never overwritten", async () => {
+  const { ensureThemes, themesDir, preferredTheme, THEME_NAMES } = await import("../lib/themes.mjs");
+
+  const dir = await scratch();
+  const first = await ensureThemes(dir);
+  assert.deepEqual(first.sort(), [...THEME_NAMES].sort(), "both themes seeded on a fresh install");
+
+  // Edit the seeded theme the way a student would, then re-run.
+  const dark = join(themesDir(dir), "tlc-dark.json");
+  const edited = JSON.parse(await readFile(dark, "utf-8"));
+  edited.colors.accent = "#ff00ff";
+  await writeFile(dark, JSON.stringify(edited, null, 2));
+
+  const second = await ensureThemes(dir);
+  assert.deepEqual(second, [], "nothing re-seeded when both themes already exist");
+
+  const after = JSON.parse(await readFile(dark, "utf-8"));
+  assert.equal(after.colors.accent, "#ff00ff", "the student's edit survives");
+
+  // A missing theme is restored without touching the one that exists.
+  const { rm } = await import("node:fs/promises");
+  await rm(join(themesDir(dir), "tlc-light.json"));
+  const third = await ensureThemes(dir);
+  assert.deepEqual(third, ["tlc-light"], "only the missing theme is restored");
+});
+
+test("the theme is never forced over an explicit choice", async () => {
+  const { preferredTheme } = await import("../lib/themes.mjs");
+
+  assert.equal(preferredTheme({ LEARNINGCODE_THEME: "solarized" }), "solarized");
+  assert.equal(preferredTheme({ LEARNINGCODE_LIGHT_THEME: "1" }), "tlc-light");
+  assert.equal(preferredTheme({}), "tlc-dark");
+});
+
+/**
+ * Pi's required colour tokens, inlined rather than read from Pi's schema file.
+ * That file lives in Pi's src/ and is not shipped in its npm package, so a test
+ * that reached for it would only pass on a machine with Pi checked out.
+ */
+const PI_REQUIRED_COLOUR_TOKENS = `accent border borderAccent borderMuted success error
+warning muted dim text thinkingText selectedBg userMessageBg userMessageText
+customMessageBg customMessageText customMessageLabel toolPendingBg toolSuccessBg
+toolErrorBg toolTitle toolOutput mdHeading mdLink mdLinkUrl mdCode mdCodeBlock
+mdCodeBlockBorder mdQuote mdQuoteBorder mdHr mdListBullet toolDiffAdded
+toolDiffRemoved toolDiffContext syntaxComment syntaxKeyword syntaxFunction
+syntaxVariable syntaxString syntaxNumber syntaxType syntaxOperator
+syntaxPunctuation thinkingOff thinkingMinimal thinkingLow thinkingMedium
+thinkingHigh thinkingXhigh bashMode`
+  .split(/\s+/)
+  .filter(Boolean);
+
+test("both shipped themes satisfy Pi's colour schema", async () => {
+  for (const mode of ["dark", "light"]) {
+    const theme = JSON.parse(
+      await readFile(new URL(`../assets/themes/tlc-${mode}.json`, import.meta.url), "utf-8"),
+    );
+
+    assert.ok(["dark", "light"].includes(theme.appearance), "appearance must be dark or light");
+
+    const missing = PI_REQUIRED_COLOUR_TOKENS.filter((token) => !(token in theme.colors));
+    assert.deepEqual(missing, [], `tlc-${mode} is missing colour tokens`);
+    assert.deepEqual(Object.keys(theme.colors).sort(), Object.keys(theme.colors).sort());
+
+    // Every colour must be a form Pi accepts: hex, okhsl, or a var reference.
+    const forms = [/^#[0-9a-fA-F]{6}$/, /^#[0-9a-fA-F]{3}$/, /^okhsl\([\d.]+ [\d.]+% [\d.]+%\)$/];
+    for (const [token, value] of Object.entries(theme.colors)) {
+      assert.ok(
+        forms.some((re) => re.test(value)) || value in theme.vars,
+        `tlc-${mode} ${token} has unrecognised value ${value}`,
+      );
+    }
+  }
+
+  // The brand cyan, sampled from the logo pixels rather than eyeballed.
+  const dark = JSON.parse(await readFile(new URL("../assets/themes/tlc-dark.json", import.meta.url), "utf-8"));
+  const light = JSON.parse(await readFile(new URL("../assets/themes/tlc-light.json", import.meta.url), "utf-8"));
+  assert.equal(dark.colors.accent, "#29c8f2", "cyan from the black-background logo");
+  assert.equal(light.colors.accent, "#0dacd6", "the darker cyan for light backgrounds");
+});
+
+test("the footer renders quota as a bar and survives narrow terminals", async () => {
+  const jiti = createJiti(import.meta.url);
+  const mod = await jiti.import("../extensions/footer.ts");
+
+  // 10 cell meter, filled proportionally.
+  assert.equal(mod._internals.meter(0, 100), "░".repeat(10));
+  assert.equal(mod._internals.meter(100, 100), "█".repeat(10));
+  assert.equal(mod._internals.meter(50, 100), "█".repeat(5) + "░".repeat(5));
+  // Over budget must not overflow the bar.
+  assert.equal(mod._internals.meter(150, 100), "█".repeat(10));
+
+  assert.equal(mod._internals.pct(82, 100), "82%");
+  assert.equal(mod._internals.pct(5, 0), "--", "an exempt account has no limit to show");
+
+  const [bar, numbers] = mod._internals.format({ tokensUsed: 8200, dailyTokenLimit: 10000, aiEnabled: true });
+  assert.match(bar, /[█░]/, "the meter is drawn");
+  assert.ok(numbers.includes("8k/10k today"), `numbers were ${numbers}`);
+});
+
+test("the footer extension installs a footer and stops polling on shutdown", async () => {
+  const jiti = createJiti(import.meta.url);
+  const mod = await jiti.import("../extensions/footer.ts");
+
+  const handlers = new Map();
+  let footerFactory;
+  const ctx = { hasUI: true, mode: "tui", ui: { setFooter: (f) => (footerFactory = f) } };
+
+  mod.default({ on: (event, fn) => handlers.set(event, fn) });
+  assert.ok(handlers.has("session_start"), "must subscribe to session_start");
+  assert.ok(handlers.has("session_shutdown"), "must clean up its timer on shutdown");
+
+  await handlers.get("session_start")({}, ctx);
+  assert.equal(typeof footerFactory, "function");
+
+  const theme = { fg: (_t, text) => text };
+  const component = footerFactory({}, theme);
+  const line = component.render(80).join("");
+  // No token in this test process, so the footer must say so rather than draw an
+  // empty bar that reads as "you have spent nothing".
+  assert.match(line, /not on Spark|unavailable/);
+
+  await handlers.get("session_shutdown")();
 });

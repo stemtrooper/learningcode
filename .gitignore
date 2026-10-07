@@ -5,6 +5,8 @@ node_modules/
 .npmrc
 .env
 .env.*
+# Screenshots pasted in for review, not part of the package.
+screenshots/
 .DS_Store
 Thumbs.db
 .vscode/

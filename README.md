@@ -52,23 +52,23 @@ reason this wrapper exists.
 The LEARNINGCODE block banner replaces Pi's header at startup:
 
 ```
-  ██╗     ███████╗ █████╗ ██████╗ ███╗   ██╗██╗███╗   ██╗ ██████╗     ██████╗ ██████╗ ██████╗ ███████╗
-   ██║     ██╔════╝██╔══██╗██╔══██╗████╗  ██║██║████╗  ██║██╔════╝    ██╔════╝██╔═══██╗██╔══██╗██╔════╝
-   ██║     █████╗  ███████║██████╔╝██╔██╗ ██║██║██╔██╗ ██║██║  ███╗   ██║     ██║   ██║██║  ██║█████╗
-   ██║     ██╔══╝  ██╔══██║██╔══██╗██║╚██╗██║██║██║╚██╗██║██║   ██║   ██║     ██║   ██║██║  ██║██╔══╝
-   ███████╗███████╗██║  ██║██║  ██║██║ ╚████║██║██║ ╚████║╚██████╔╝   ╚██████╗╚██████╔╝██████╔╝███████╗
-   ╚══════╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝╚═╝  ╚═══╝ ╚═════╝     ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝
-  ═════════════════════════════════════════════════════════════════════════════════════════════════════
+  ██╗     ███████╗ █████╗ ██████╗ ███╗   ██╗██╗███╗   ██╗ ██████╗  ██████╗ ██████╗ ██████╗ ███████╗
+  ██║     ██╔════╝██╔══██╗██╔══██╗████╗  ██║██║████╗  ██║██╔════╝ ██╔════╝██╔═══██╗██╔══██╗██╔════╝
+  ██║     █████╗  ███████║██████╔╝██╔██╗ ██║██║██╔██╗ ██║██║  ███╗██║     ██║   ██║██║  ██║█████╗
+  ██║     ██╔══╝  ██╔══██║██╔══██╗██║╚██╗██║██║██║╚██╗██║██║   ██║██║     ██║   ██║██║  ██║██╔══╝
+  ███████╗███████╗██║  ██║██║  ██║██║ ╚████║██║██║ ╚████║╚██████╔╝╚██████╗╚██████╔╝██████╔╝███████╗
+  ╚══════╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝╚═╝  ╚═══╝ ╚═════╝  ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝
+  ═════════════════════════════════════════════════════════════════════════════════════════════════
   The Learning Curve · Sarawak
   /help commands · /quota today's spend · /hotkeys keys
 ```
 
-The figlet "ANSI Shadow" face, 101 columns wide, kept verbatim because the
+The figlet "ANSI Shadow" face, 97 columns wide, kept verbatim because the
 double-line box characters only align if every row keeps its exact offset.
 
 Colour comes from the active theme, so it stays legible in light and dark.
 
-**It needs a 103 column terminal.** Below that it collapses to a wordmark,
+**It needs a 99 column terminal.** Below that it collapses to a wordmark,
 rather than drawing art that would be clipped into something that looks broken.
 An 80 column terminal will show the compact form, so widen the window or reduce
 the art.
@@ -90,6 +90,56 @@ that variable in place authenticates both and exposes Zen's 111 pay-per-use mode
 alongside the 29 a Go subscription covers, at up to $20/M output. learningcode
 moves the key into Pi's `auth.json` under `opencode-go` alone, which leaves Zen
 credential-less so it never registers. Set `LEARNINGCODE_ALLOW_ZEN=1` to opt in.
+
+## Theme
+
+Two TLC themes ship with the package and are seeded into
+`~/.learningcode/agent/themes/` on first run:
+
+| Theme | Accent | Sampled from |
+|---|---|---|
+| `tlc-dark` | `#29c8f2` | `TLC_BLACKBGND.png` |
+| `tlc-light` | `#0dacd6` | `TLC_WHITEBGND.png` |
+
+The values are read out of the logo pixels, not eyeballed. The logo ships two
+cyans because the darker one has to hold contrast on a white field, which maps
+exactly onto Pi's light/dark split.
+
+A seeded theme is **never overwritten**, so an edit survives upgrades. Override
+the default with `--theme`, or `LEARNINGCODE_THEME=tlc-light`. To try Pi's own:
+
+```bash
+learningcode --theme dark
+```
+
+28 of Pi's 56 colour tokens are re-tinted: the accent, borders, greys, markdown,
+syntax highlighting, diff colours, selected backgrounds, and the thinking-level
+ramp. Semantic colours (red, green, yellow) are left alone, because those mean
+error, success and warning rather than anything about the brand. The thinking ramp
+runs grey to cyan and keeps red at the top, where it still means "this is getting
+expensive".
+
+The banner does **not** follow the theme. It uses the brand cyan directly, the way
+Pi's own logo does, because a wordmark that changes colour with whatever theme is
+active stops being a wordmark. It picks the right one of the two cyans from the
+terminal's colour mode.
+
+## Footer
+
+While connected to Spark, a footer shows today's token spend:
+
+```
+  █████░░░░░ 50%  125k / 250k today
+```
+
+Spark's quota endpoint is not part of the OpenAI API, so no stock harness shows
+this. It polls at most every two minutes, since Spark allows one active
+generation per student and a per-turn refresh would add latency to the thing the
+student is waiting on. When AI is switched off for an account the footer says so
+instead of showing a bar.
+
+Off Spark, or with no token, it says so rather than drawing an empty bar that would
+read as "you have spent nothing".
 
 ## Configuration
 
