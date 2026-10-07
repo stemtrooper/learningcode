@@ -17,7 +17,8 @@
 	],
 	"scripts": {
 		"start": "node ./bin/learningcode.mjs",
-		"test": "node --test \"test/**/*.test.mjs\""
+		"test": "node --test \"test/**/*.test.mjs\"",
+		"preview": "node ./scripts/preview.mjs"
 	},
 	"dependencies": {
 		"@earendil-works/pi-coding-agent": "1.0.4",
