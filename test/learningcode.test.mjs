@@ -214,11 +214,20 @@ test("the banner keeps the figlet art intact and collapses when it cannot fit", 
   const wide = banner.render(120);
   assert.ok(wide.length > 8, "wide render includes art, rule, tagline and hints");
   // Compare against the art itself rather than counting matches: a character-class
-  // count also matches the rule beneath the art.
+  // count also matches the rule beneath the art. Strip colour first, since the
+  // banner wraps each row in an escape and that prefix breaks a literal compare.
+  const plain = (text) => text.replace(/\x1b\[[0-9;]*m/g, "");
+  const plainWide = wide.map(plain);
   for (const line of mod.bannerArt()) {
-    assert.ok(wide.includes("  " + line), "art row missing from render: " + JSON.stringify(line));
+    assert.ok(
+      plainWide.includes("  " + line),
+      "art row missing from render: " + JSON.stringify(line),
+    );
   }
-  assert.ok(wide.every((line) => line.startsWith("  ") || line === ""), "everything is indented");
+  assert.ok(
+    plainWide.every((line) => line.startsWith("  ") || line === ""),
+    "everything is indented",
+  );
 
   // 96 columns is one short of the art, so the wordmark shows instead.
   const narrow = banner.render(96);
@@ -406,4 +415,69 @@ test("the footer extension installs a footer and stops polling on shutdown", asy
   assert.match(line, /not on Spark|unavailable/);
 
   await handlers.get("session_shutdown")();
+});
+
+test("the banner survives a theme that rejects non-token colours", async () => {
+  const jiti = createJiti(import.meta.url);
+  const mod = await jiti.import("../extensions/banner.ts");
+
+  /**
+   * A faithful stand-in for Pi's Theme.fg. The earlier stub accepted any string,
+   * which is exactly why a real bug slipped through: fg takes a theme *token*,
+   * and Theme.tokenAnsi throws "Unknown theme color: #29c8f2" for anything else.
+   * Printing the brand cyan through fg crashed the header at render time, in the
+   * TUI only, so a print-mode smoke test never saw it.
+   */
+  const theme = {
+    fg(token) {
+      const tokens = new Set(["accent", "border", "dim", "muted", "text", "error"]);
+      if (!tokens.has(token)) throw new Error(`Unknown theme color: ${token}`);
+      return token;
+    },
+    appearance: "dark",
+    getColorMode: () => "truecolor",
+  };
+
+  const lines = mod.createBanner(theme).render(120);
+  assert.ok(lines.length > 8, "header renders without throwing");
+
+  const art = lines.find((line) => line.includes("\u2588"));
+  assert.ok(art, "art is present");
+  // #29c8f2 as a real 24-bit escape, not routed through the theme.
+  assert.match(art, /\x1b\[38;2;41;200;242m/, "TLC cyan emitted as truecolor");
+});
+
+test("appearance picks the cyan, getColorMode picks the encoding", async () => {
+  const jiti = createJiti(import.meta.url);
+  const mod = await jiti.import("../extensions/banner.ts");
+
+  const artFor = (overrides) =>
+    mod
+      .createBanner({ fg: (_t, text) => text, ...overrides })
+      .render(120)
+      .find((line) => line.includes("\u2588"));
+
+  // theme.appearance is light or dark and decides the brand colour.
+  assert.match(artFor({ appearance: "dark" }), /38;2;41;200;242/, "#29c8f2 on a dark theme");
+  assert.match(artFor({ appearance: "light" }), /38;2;13;172;214/, "#0dacd6 on a light theme");
+
+  // getColorMode is the terminal capability and must NOT be read as light/dark.
+  assert.match(
+    artFor({ appearance: "light", getColorMode: () => "256" }),
+    /38;5;/,
+    "a 256 colour terminal gets a 256 colour escape, not truecolor",
+  );
+  assert.match(
+    artFor({ appearance: "dark", getColorMode: () => "256" }),
+    /38;5;/,
+    "capability does not change which cyan is chosen",
+  );
+
+  // Nothing reported at all: keep the primary cyan rather than losing colour.
+  const bare = mod.createBanner({ fg: (_t, text) => text }).render(120);
+  assert.match(
+    bare.find((line) => line.includes("\u2588")),
+    /38;2;41;200;242/,
+    "defaults to the dark-theme cyan",
+  );
 });

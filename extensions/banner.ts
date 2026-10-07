@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { foregroundAnsi, rgbColor } from "@earendil-works/pi-tui";
 
 /**
  * LEARNINGCODE startup banner.
@@ -17,10 +18,16 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
  * hard-coding colours that break on one of them.
  */
 
-/** Structural types, so this file needs no runtime import from Pi's packages. */
+/**
+ * Only the parts of Pi's Theme this file touches, to keep the runtime import
+ * down to the two colour helpers it actually needs.
+ */
 type ThemeLike = {
   fg(token: string, text: string): string;
-  getColorMode?(): "light" | "dark";
+  /** "light" | "dark" - the background the active theme is designed for. */
+  appearance?: "light" | "dark";
+  /** The terminal's colour capability, e.g. "truecolor". Not light or dark. */
+  getColorMode?(): string;
 };
 type HeaderComponent = { render(width: number): string[] };
 
@@ -35,9 +42,16 @@ type HeaderComponent = { render(width: number): string[] };
  *
  * Two values because the logo ships two: the darker cyan holds contrast on a
  * white field, the brighter one on black.
+ *
+ * Note this must not go through `theme.fg()`. That resolves theme *tokens*, and
+ * `Theme.tokenAnsi` throws `Unknown theme color: #29c8f2` for anything that is
+ * not one, so a raw hex there crashes the header at render time. `foregroundAnsi`
+ * takes a colour value directly, and unlike a hand-rolled escape it still
+ * degrades to 256 colour on terminals without truecolour support.
  */
-const CYAN_DARK_BG = "#29c8f2";
-const CYAN_LIGHT_BG = "#0dacd6";
+const CYAN_DARK_BG = rgbColor(0x29, 0xc8, 0xf2);
+const CYAN_LIGHT_BG = rgbColor(0x0d, 0xac, 0xd6);
+const RESET = "\x1b[0m";
 
 const ART: readonly string[] = [
   "██╗     ███████╗ █████╗ ██████╗ ███╗   ██╗██╗███╗   ██╗ ██████╗  ██████╗ ██████╗ ██████╗ ███████╗",
@@ -69,11 +83,15 @@ export function createBanner(theme: ThemeLike): HeaderComponent {
 	const art = bannerArt();
 	const artWidth = bannerWidth();
 
-	// Fall back to the theme's accent only if a caller cannot report its colour
-	// mode, which keeps the banner legible rather than dropping colour entirely.
-	const mode = typeof theme.getColorMode === "function" ? theme.getColorMode() : "dark";
-	const brand = mode === "light" ? CYAN_LIGHT_BG : CYAN_DARK_BG;
-	const ink = (text: string) => theme.fg(brand as never, text);
+	// Two different things, easy to swap by accident:
+	//   appearance    light or dark, decides which brand cyan is readable
+	//   getColorMode  the terminal's colour capability, decides how to emit it
+	// Default to dark so the banner keeps its colour on a host that reports
+	// neither, rather than dropping the brand.
+	const isLight = theme.appearance === "light";
+	const mode = typeof theme.getColorMode === "function" ? theme.getColorMode() : "truecolor";
+	const brand = foregroundAnsi(isLight ? CYAN_LIGHT_BG : CYAN_DARK_BG, mode as never);
+	const ink = (text: string) => `${brand}${text}${RESET}`;
 
 	return {
 		render(width: number): string[] {
