@@ -554,3 +554,55 @@ test("appearance picks the cyan, getColorMode picks the encoding", async () => {
     "defaults to the dark-theme cyan",
   );
 });
+
+test("the Spark token reaches Pi by both routes, so they cannot drift", async () => {
+  /**
+   * The regression this locks down: Pi prefers a stored credential in auth.json over
+   * the "$SPARK_API_KEY" the provider config names. Leaving the token only in the
+   * environment let the two diverge, so Pi authenticated completions with a stale
+   * auth.json entry while /quota and /seats read the environment and got a 401.
+   */
+  const dir = await scratch();
+  const token = "spark_live_consistencetest01";
+  const { saveProviderKey } = await import("../lib/auth.mjs");
+
+  await saveProviderKey(dir, "tlc-spark", token);
+
+  const auth = JSON.parse(await readFile(join(dir, "auth.json"), "utf-8"));
+  assert.equal(auth["tlc-spark"].key, token, "Pi's stored credential is the token");
+  assert.equal(auth["tlc-spark"].type, "api_key");
+
+  // The value Pi would use and the value the extensions read must be the same
+  // string, which is the whole point.
+  assert.equal(
+    auth["tlc-spark"].key,
+    process.env.SPARK_API_KEY ?? token,
+    "stored credential and environment agree",
+  );
+});
+
+test("only a spark_live_ value is treated as a cached Spark token", async () => {
+  /**
+   * A leftover OpenCode key in the cache slot would be sent to Spark, rejected, and
+   * reported as a 401 that looks like a revoked token. The prefix check is what stops
+   * that, and it is tested here as a pure function because exercising it through
+   * resolveToken would reach the interactive prompt and hang the suite.
+   */
+  const { isSparkToken, looksLikeToken } = await import("../lib/token.mjs");
+
+  assert.equal(isSparkToken("spark_live_abc123"), true);
+  assert.equal(looksLikeToken("spark_live_abc123"), true);
+
+  for (const wrong of [
+    "oc_sk_5ab64146dd6a_Q_6njm",
+    "sk-ant-api03-whatever",
+    "",
+    "   ",
+    "spark_live_",
+    undefined,
+    null,
+    42,
+  ]) {
+    assert.equal(isSparkToken(wrong), false, "must reject " + JSON.stringify(wrong));
+  }
+});

@@ -288,6 +288,9 @@ async function main() {
 					"it may not be a Spark token.\n",
 			);
 		}
+		// Keep Pi's stored credential and the environment in step. See the note
+		// beside saveProviderKey below.
+		await saveProviderKey(dir, PROVIDER_ID, token);
 		if (resolved.shouldCache) await writeCachedToken(dir, token);
 	} else if (explicitToken) {
 		process.stderr.write(
@@ -320,11 +323,12 @@ async function main() {
 
 	const childEnv = { ...process.env };
 
-	// Pi reads provider credentials from auth.json before the environment, and
-	// auth.json is keyed per provider. Storing the key under opencode-go alone
-	// authenticates Go while leaving Zen credential-less, so its 111 pay-per-use
-	// models never register. Zen and Go otherwise share OPENCODE_API_KEY, so
-	// leaving the env var in place would expose both.
+	// Pi prefers a stored credential in auth.json over the `$SPARK_API_KEY` the
+	// provider config names, so leaving the token only in the environment lets the
+	// two drift apart: Pi authenticates with whatever auth.json holds while the
+	// /quota and /seats commands read the environment, and a stale entry then shows
+	// up as a 401 on those two but not on completions. Writing the token to
+	// auth.json as well makes every path use the same value whichever Pi prefers.
 	const goKey = process.env.LEARNINGCODE_GO_KEY || process.env.OPENCODE_API_KEY;
 	if (goKey && process.env.LEARNINGCODE_ALLOW_ZEN !== "1") {
 		await saveProviderKey(dir, GO_PROVIDER, goKey);
