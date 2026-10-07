@@ -400,6 +400,25 @@ test("the theme is never forced over an explicit choice", async () => {
   assert.equal(preferredTheme({}), "tlc-dark");
 });
 
+test("the launcher quiets Pi's startup header without overwriting a student's choice", async () => {
+  const dir = await scratch();
+  globalThis.__lcDir = dir;
+
+  await launch(["--model", "opencode-go/glm-5.3-flash", "--show-config"]);
+  const settingsPath = join(dir, "settings.json");
+  const seeded = JSON.parse(await readFile(settingsPath, "utf-8"));
+  assert.equal(seeded.quietStartup, true, "Pi's logo should not flash before the TLC banner");
+
+  seeded.quietStartup = false;
+  seeded.theme = "tlc-dark";
+  await writeFile(settingsPath, JSON.stringify(seeded, null, 2));
+
+  await launch(["--model", "opencode-go/glm-5.3-flash", "--show-config"]);
+  const preserved = JSON.parse(await readFile(settingsPath, "utf-8"));
+  assert.equal(preserved.quietStartup, false, "an explicit user preference wins");
+  assert.equal(preserved.theme, "tlc-dark", "other Pi settings are preserved");
+});
+
 /**
  * Pi's required colour tokens, inlined rather than read from Pi's schema file.
  * That file lives in Pi's src/ and is not shipped in its npm package, so a test
@@ -628,4 +647,43 @@ test("only a spark_live_ value is treated as a cached Spark token", async () => 
   ]) {
     assert.equal(isSparkToken(wrong), false, "must reject " + JSON.stringify(wrong));
   }
+});
+
+test("quiet startup is seeded so the TLC header does not flash after Pi's", async () => {
+  const { ensureQuietStartup } = await import("../lib/settings.mjs");
+  const dir = await scratch();
+
+  assert.equal(await ensureQuietStartup(dir), true, "fresh settings get quietStartup");
+  const path = join(dir, "settings.json");
+  const seeded = JSON.parse(await readFile(path, "utf-8"));
+  assert.equal(seeded.quietStartup, true);
+
+  // It is seeded only when absent, preserving any choice the student made.
+  assert.equal(await ensureQuietStartup(dir), false, "existing setting is left alone");
+  seeded.theme = "tlc-dark";
+  seeded.quietStartup = false;
+  await writeFile(path, JSON.stringify(seeded, null, 2));
+  assert.equal(await ensureQuietStartup(dir), false);
+  const preserved = JSON.parse(await readFile(path, "utf-8"));
+  assert.equal(preserved.quietStartup, false);
+  assert.equal(preserved.theme, "tlc-dark");
+
+  // Pi's "header" mode is also an explicit preference and must survive.
+  preserved.quietStartup = "header";
+  await writeFile(path, JSON.stringify(preserved, null, 2));
+  assert.equal(await ensureQuietStartup(dir), false);
+  assert.equal(JSON.parse(await readFile(path, "utf-8")).quietStartup, "header");
+});
+
+test("quiet startup strips a BOM but reports malformed settings clearly", async () => {
+  const { ensureQuietStartup } = await import("../lib/settings.mjs");
+  const dir = await scratch();
+  const path = join(dir, "settings.json");
+
+  await writeFile(path, `\uFEFF{"theme":"tlc-dark"}`, "utf-8");
+  assert.equal(await ensureQuietStartup(dir), true);
+  assert.equal(JSON.parse(await readFile(path, "utf-8")).quietStartup, true);
+
+  await writeFile(path, "{broken", "utf-8");
+  await assert.rejects(() => ensureQuietStartup(dir), /Could not parse Pi settings/);
 });

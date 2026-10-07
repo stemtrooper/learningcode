@@ -17,6 +17,7 @@ import {
 } from "../lib/config.mjs";
 import { GO_PROVIDER, saveProviderKey } from "../lib/auth.mjs";
 import { ensureSparkProvider, modelsPath, retargetProvider } from "../lib/models.mjs";
+import { ensureQuietStartup } from "../lib/settings.mjs";
 import { ensureThemes, preferredTheme } from "../lib/themes.mjs";
 import { hasToken, looksLikeToken, resolveToken, writeCachedToken } from "../lib/token.mjs";
 
@@ -45,6 +46,7 @@ Everything else is passed straight through to Pi, so the usual flags work:
   learningcode -p "explain main.py"   one-shot, non-interactive
   learningcode --mode json            machine-readable event stream
   learningcode --list-models          every model Pi can reach
+  learningcode --verbose              show Pi's startup header and resource list
 
 Other providers
   Any --model other than tlc-spark/... skips the Spark token and the Spark
@@ -230,6 +232,7 @@ async function main() {
 	}
 	await ensureSparkProvider(dir);
 	await ensureThemes(dir);
+	await ensureQuietStartup(dir);
 
 	// `--login` forces a fresh paste even when a token is already cached.
 	const forced = [];

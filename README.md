@@ -184,6 +184,11 @@ configure.
 On a narrower terminal it steps down to a condensed banner, then to the wordmark,
 rather than drawing art that would be clipped.
 
+LearningCode suppresses Pi's built-in startup header so its own banner appears
+without the Pi logo flashing first. Use `learningcode --verbose` to show Pi's
+startup header and loaded-resource list as well. An explicit `quietStartup`
+setting in `~/.learningcode/agent/settings.json` is respected.
+
 A footer shows your remaining quota whenever you are connected to Spark:
 
 ```
