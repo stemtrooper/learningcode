@@ -63,6 +63,34 @@ npm install -g @stemtrooper/learningcode
 learningcode --version
 ```
 
+`node --version` must report **22.19.0 or newer**. If it is older — and
+Ubuntu's own `apt` package is usually Node 18 — install a current one first:
+
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+source ~/.bashrc
+nvm install 24
+nvm alias default 24
+```
+
+**If the install fails with a permissions error**, npm's global directory belongs
+to root. Move it somewhere you own, then install again:
+
+```bash
+mkdir -p ~/.npm-global
+npm config set prefix ~/.npm-global
+export PATH="$HOME/.npm-global/bin:$PATH"
+echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> ~/.bashrc
+
+npm install -g @stemtrooper/learningcode
+```
+
+The last line is what makes `learningcode` visible in future terminals; without
+it you will think the install failed.
+
+**Do not use `sudo npm install -g`.** It appears to work, then writes
+root-owned files that break your next upgrade with a confusing error.
+
 ### Termux (Android)
 
 No root and no `proot-distro` needed.
@@ -167,7 +195,9 @@ A footer shows your remaining quota whenever you are connected to Spark:
 ## Troubleshooting
 
 **`Node 22.19.0 or newer is required`**
-Upgrade Node, then reinstall: `npm i -g @stemtrooper/learningcode`.
+Upgrade Node, then reinstall: `npm i -g @stemtrooper/learningcode`. On Linux this
+is usually the first thing to check, because Ubuntu ships Node 18 — see
+[macOS / Linux](#macos--linux).
 
 **`No Spark API token configured`**
 You do not have a token yet, or it is not cached. Run `learningcode --login` to
