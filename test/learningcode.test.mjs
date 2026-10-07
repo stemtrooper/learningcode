@@ -178,62 +178,98 @@ test("--token is ignored, with a warning, for a non-Spark model", async () => {
   assert.match(stderr, /only applies to tlc-spark/);
 });
 
-test("the banner keeps the figlet art intact and collapses when it cannot fit", async () => {
+test("the banner steps down through three tiers as the terminal narrows", async () => {
+  const jiti = createJiti(import.meta.url);
+  const mod = await jiti.import("../extensions/banner.ts");
+
+  const theme = { fg: (_t, text) => text, appearance: "dark", getColorMode: () => "truecolor" };
+  const banner = mod.createBanner(theme);
+  const plain = (text) => text.replace(/\x1b\[[0-9;]*m/g, "");
+
+  const full = mod.bannerWidth();
+  const small = mod.condensedWidth();
+  assert.equal(full, 97, "full face is 97 columns");
+  assert.equal(small, 47, "condensed face is 47 columns");
+
+  // Wide: the figlet face, all six rows, verbatim, plus the rule beneath it.
+  const wide = banner.render(full + 2).map(plain);
+  for (const line of mod.bannerArt()) {
+    assert.ok(wide.includes("  " + line), "full art row missing: " + JSON.stringify(line));
+  }
+  assert.ok(wide.join("\n").includes("\u2550"), "the rule appears under the full art");
+  assert.ok(wide.join("\n").includes("/hotkeys"), "the hint line appears under the full art");
+
+  // A phone will never have 97 columns, so the middle tier still has to spell the
+  // word rather than collapsing straight to the wordmark.
+  const phone = banner.render(small + 2).map(plain);
+  assert.equal(phone.length, 7, "condensed tier is four art rows plus framing");
+  for (const line of mod.condensedArt_()) {
+    assert.ok(phone.includes("  " + line), "condensed row missing: " + JSON.stringify(line));
+  }
+  assert.ok(
+    !phone.join("\n").includes("\u2550"),
+    "the 97 wide rule must not be drawn on a narrow terminal",
+  );
+
+  // Too narrow for even the condensed face: the wordmark.
+  const tiny = banner.render(small).map(plain).join("\n");
+  assert.match(tiny, /learningcode/);
+  assert.doesNotMatch(tiny, /[\u2588\u2550-\u255D]/, "no art when nothing fits");
+
+  // Every tier keeps the tagline, so the branding survives at any width.
+  for (const width of [full + 2, small + 2, small]) {
+    assert.match(
+      banner.render(width).map(plain).join("\n"),
+      /The Learning Curve/,
+      "tagline present at width " + width,
+    );
+  }
+});
+
+test("the condensed face is block art and loses no glyph to trimming", async () => {
+  const jiti = createJiti(import.meta.url);
+  const mod = await jiti.import("../extensions/banner.ts");
+
+  const art = mod.condensedArt_();
+  assert.equal(art.length, 4, "condensed face is four rows tall");
+  art.forEach((line, i) => {
+    assert.match(line, /^[\u2588 ]+$/, "row " + i + " must be blocks and spaces only");
+  });
+
+  // Rows are trimmed at build time, so one ending in its last glyph's own padding
+  // is shorter than the widest. The invariant is that padding a row back out adds
+  // spaces only, which is what would fail if a glyph were cut instead.
+  const widest = Math.max(...art.map((line) => line.length));
+  assert.equal(widest, 47, "widest condensed row is 47");
+  art.forEach((line, i) => {
+    const padding = line.padEnd(47).slice(line.length);
+    assert.ok(/^ *$/.test(padding), "row " + i + " must be short only by trailing spaces");
+  });
+
+  // Twelve letters at three columns each, plus eleven single-space gaps.
+  assert.equal(art[0].length, 12 * 3 + 11);
+});
+
+test("the full face keeps its verbatim rows and flush-left offsets", async () => {
   const jiti = createJiti(import.meta.url);
   const mod = await jiti.import("../extensions/banner.ts");
 
   const art = mod.bannerArt();
   assert.equal(art.length, 6, "the ANSI Shadow face is six rows tall");
 
-  // Every row must be box characters, full blocks or padding. A stray latin
-  // letter would mean the art got reflowed into something it is not.
   for (const line of art) {
     assert.match(line, /^[\u2588\u2550-\u255D ]+$/, "row must be art characters only");
   }
 
-  // Every row must start flush left. An earlier paste of this art carried a
-  // leading space on rows 2 to 6, which slid every letter's body one column
-  // right of its own top bar. Nothing in a banner looks more broken than that,
-  // so it is asserted rather than trusted.
+  // Every row starts flush left. An earlier paste of this art carried a leading
+  // space on rows two to six, sliding every letter one column right of its own top
+  // bar. Nothing in a banner looks more broken than that, so it is asserted.
   art.forEach((line, i) => {
     assert.ok(!line.startsWith(" "), "row " + i + " must start flush left");
   });
   assert.ok(art[0].startsWith("\u2588\u2588\u2557"), "row 0 opens with the L's top bar");
   assert.ok(art[1].startsWith("\u2588\u2588\u2551"), "row 1 continues the L's stem flush");
   assert.ok(art[art.length - 1].startsWith("\u255A"), "last row opens with the L's foot");
-
-  // The art is wider than a classic 80 column terminal, which is why the
-  // fallback exists. Pin the real number so a change is a deliberate decision.
-  const width = mod.bannerWidth();
-  assert.equal(width, 97, "art width changed; re-check the 80 column fallback");
-  assert.ok(width > 80, "if this ever fits 80 columns the fallback can be widened");
-
-  const theme = { fg: (_token, text) => text };
-  const banner = mod.createBanner(theme);
-
-  const wide = banner.render(120);
-  assert.ok(wide.length > 8, "wide render includes art, rule, tagline and hints");
-  // Compare against the art itself rather than counting matches: a character-class
-  // count also matches the rule beneath the art. Strip colour first, since the
-  // banner wraps each row in an escape and that prefix breaks a literal compare.
-  const plain = (text) => text.replace(/\x1b\[[0-9;]*m/g, "");
-  const plainWide = wide.map(plain);
-  for (const line of mod.bannerArt()) {
-    assert.ok(
-      plainWide.includes("  " + line),
-      "art row missing from render: " + JSON.stringify(line),
-    );
-  }
-  assert.ok(
-    plainWide.every((line) => line.startsWith("  ") || line === ""),
-    "everything is indented",
-  );
-
-  // 96 columns is one short of the art, so the wordmark shows instead.
-  const narrow = banner.render(96);
-  assert.match(narrow.join("\n"), /learningcode/);
-  assert.doesNotMatch(narrow.join("\n"), /[\u2588\u2550-\u255D]/, "no art when it cannot fit");
-  assert.ok(narrow.length < wide.length, "narrow terminals get the compact wordmark");
 });
 
 test("the banner extension installs a header from session_start", async () => {

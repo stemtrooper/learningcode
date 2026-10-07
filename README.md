@@ -66,12 +66,23 @@ The LEARNINGCODE block banner replaces Pi's header at startup:
 The figlet "ANSI Shadow" face, 97 columns wide, kept verbatim because the
 double-line box characters only align if every row keeps its exact offset.
 
-Colour comes from the active theme, so it stays legible in light and dark.
+It steps down through three tiers, because a phone will never have 97 columns and
+clipping box characters looks like a rendering bug rather than a design:
 
-**It needs a 99 column terminal.** Below that it collapses to a wordmark,
-rather than drawing art that would be clipped into something that looks broken.
-An 80 column terminal will show the compact form, so widen the window or reduce
-the art.
+| Terminal width | Shows |
+|---|---|
+| 99 or more | the figlet face above |
+| 51 to 98 | a condensed 4 row face, 47 columns |
+| under 51 | the wordmark |
+
+The condensed tier still spells LEARNINGCODE:
+
+\\n  █   ███  █  ███ █ █ ███ █ █ ███ ███ ███ ███ ███
+  █   █   █ █ █ █ ███  █  ███ █   █   █ █ █ █ █
+  █   ███ ███ ███ █ █  █  █ █ █ █ █   █ █ █ █ ███
+  ███ ███ █ █ █ █ █ █ ███ █ █ ███ ███ ███ ███ ███
+\\n
+Colour comes from the active theme, so it stays legible in light and dark.
 
 It installs via `ctx.ui.setHeader`, the supported way to brand a fork.
 

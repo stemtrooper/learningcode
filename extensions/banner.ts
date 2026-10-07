@@ -5,22 +5,25 @@ import { foregroundAnsi, rgbColor } from "@earendil-works/pi-tui";
  * LEARNINGCODE startup banner.
  *
  * Pi lets an extension replace the whole header, which is the supported way to
- * brand a fork without touching Pi's internals. The built-in header is Pi's own
- * logo plus key hints; we trade that for the TLC banner and a line of slash
- * commands, so nothing is claimed about keybindings we cannot read.
+ * brand a fork without touching Pi's internals.
  *
- * The art is the figlet "ANSI Shadow" face, kept verbatim rather than rebuilt from
- * a glyph map: the double-line box characters only line up if every row keeps
- * its exact offset, and a one-space drift makes the whole thing look broken.
+ * Three tiers, because the full face does not fit everywhere. A phone will never
+ * have 97 columns, and clipping box characters looks like a rendering bug rather
+ * than a design, so the banner steps down instead:
  *
- * Rendering uses the active theme's colour tokens (`accent`, `border`, `dim`,
- * `muted`) so the banner stays legible in light and dark terminals instead of
- * hard-coding colours that break on one of them.
+ *   >= 99 columns   figlet "ANSI Shadow", 97 wide, 6 rows
+ *   >= 51 columns   condensed 4 row face, 47 wide
+ *   below that     the wordmark
+ *
+ * The full art is stored verbatim rather than rebuilt from a glyph map. That face
+ * only aligns because every row keeps its exact offset, the top row flush left
+ * and the rest flush too; a one-space drift makes the whole banner look broken.
+ * A test asserts those offsets.
  */
 
 /**
- * Only the parts of Pi's Theme this file touches, to keep the runtime import
- * down to the two colour helpers it actually needs.
+ * Only the parts of Pi's Theme this file touches, to keep the runtime import down
+ * to the two colour helpers actually needed.
  */
 type ThemeLike = {
   fg(token: string, text: string): string;
@@ -45,14 +48,20 @@ type HeaderComponent = { render(width: number): string[] };
  *
  * Note this must not go through `theme.fg()`. That resolves theme *tokens*, and
  * `Theme.tokenAnsi` throws `Unknown theme color: #29c8f2` for anything that is
- * not one, so a raw hex there crashes the header at render time. `foregroundAnsi`
- * takes a colour value directly, and unlike a hand-rolled escape it still
- * degrades to 256 colour on terminals without truecolour support.
+ * not one, so a raw hex there crashes the header at render time.
+ * `foregroundAnsi` takes a colour value directly, and unlike a hand-rolled escape
+ * it still degrades to 256 colour on terminals without truecolour support.
  */
 const CYAN_DARK_BG = rgbColor(0x29, 0xc8, 0xf2);
 const CYAN_LIGHT_BG = rgbColor(0x0d, 0xac, 0xd6);
 const RESET = "\x1b[0m";
 
+const WORD = "LEARNINGCODE";
+const PAD = "  ";
+const TAGLINE = "The Learning Curve · Sarawak";
+const HINTS = "/help commands · /quota today's spend · /hotkeys keys";
+
+/** figlet "ANSI Shadow", verbatim. 97 columns, 6 rows. */
 const ART: readonly string[] = [
   "██╗     ███████╗ █████╗ ██████╗ ███╗   ██╗██╗███╗   ██╗ ██████╗  ██████╗ ██████╗ ██████╗ ███████╗",
   "██║     ██╔════╝██╔══██╗██╔══██╗████╗  ██║██║████╗  ██║██╔════╝ ██╔════╝██╔═══██╗██╔══██╗██╔════╝",
@@ -62,26 +71,47 @@ const ART: readonly string[] = [
   "╚══════╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝╚═╝  ╚═══╝ ╚═════╝  ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝",
 ];
 
-const TAGLINE = "The Learning Curve · Sarawak";
-const HINTS = "/help commands · /quota today's spend · /hotkeys keys";
+/**
+ * Condensed fallback for narrow terminals. Three columns per glyph, which is
+ * the most a twelve letter word can be compressed before the letterforms stop
+ * reading: an N needs four columns to show its diagonal, and dropping it to
+ * three turns the letter into a filled block.
+ */
+const CONDENSED_GLYPHS: Record<string, readonly string[]> = {
+  L: ["█  ", "█  ", "█  ", "███"],
+  E: ["███", "█  ", "███", "███"],
+  A: [" █ ", "█ █", "███", "█ █"],
+  R: ["███", "█ █", "███", "█ █"],
+  N: ["█ █", "███", "█ █", "█ █"],
+  I: ["███", " █ ", " █ ", "███"],
+  G: ["███", "█  ", "█ █", "███"],
+  C: ["███", "█  ", "█  ", "███"],
+  O: ["███", "█ █", "█ █", "███"],
+  D: ["███", "█ █", "█ █", "███"],
+};
 
-const PAD = "  ";
+const condensedArt = (): string[] => {
+  const rows = CONDENSED_GLYPHS[WORD[0]].length;
+  return Array.from({ length: rows }, (_, row) =>
+    [...WORD].map((letter) => CONDENSED_GLYPHS[letter][row]).join(" ").trimEnd(),
+  );
+};
 
 /** A copy, so a caller mutating the result cannot corrupt later renders. */
 export const bannerArt = (): string[] => [...ART];
 
-export const bannerWidth = (): number => Math.max(...ART.map((line) => line.length));
+export const condensedArt_ = condensedArt;
 
-/**
- * The art is 97 columns, which does not fit the classic 80 column terminal.
- * Below the art plus its indent we show a wordmark instead, because clipped box
- * characters look like a rendering bug rather than a design.
- */
+export const bannerWidth = (): number => Math.max(...ART.map((line) => line.length));
+export const condensedWidth = (): number => Math.max(...condensedArt().map((line) => line.length));
+
+/** Art plus its indent. Derived, never guessed. */
 const MIN_FULL_WIDTH = bannerWidth() + PAD.length;
+const MIN_CONDENSED_WIDTH = condensedWidth() + PAD.length;
 
 export function createBanner(theme: ThemeLike): HeaderComponent {
-	const art = bannerArt();
-	const artWidth = bannerWidth();
+	const full = bannerArt();
+	const small = condensedArt();
 
 	// Two different things, easy to swap by accident:
 	//   appearance    light or dark, decides which brand cyan is readable
@@ -95,16 +125,23 @@ export function createBanner(theme: ThemeLike): HeaderComponent {
 
 	return {
 		render(width: number): string[] {
-			if (width < MIN_FULL_WIDTH) {
-				return ["", ink(PAD + "learningcode"), theme.fg("muted", PAD + TAGLINE)];
+			if (width >= MIN_FULL_WIDTH) {
+				const lines = ["", ...full.map((line) => ink(PAD + line))];
+				lines.push(theme.fg("border", PAD + "═".repeat(bannerWidth())));
+				lines.push(theme.fg("muted", PAD + TAGLINE));
+				lines.push(theme.fg("dim", PAD + HINTS));
+				lines.push("");
+				return lines;
 			}
 
-			const lines = ["", ...art.map((line) => ink(PAD + line))];
-			lines.push(theme.fg("border", PAD + "═".repeat(artWidth)));
-			lines.push(theme.fg("muted", PAD + TAGLINE));
-			lines.push(theme.fg("dim", PAD + HINTS));
-			lines.push("");
-			return lines;
+			if (width >= MIN_CONDENSED_WIDTH) {
+				const lines = ["", ...small.map((line) => ink(PAD + line))];
+				lines.push(theme.fg("muted", PAD + TAGLINE));
+				lines.push("");
+				return lines;
+			}
+
+			return ["", ink(PAD + "learningcode"), theme.fg("muted", PAD + TAGLINE)];
 		},
 	};
 }
