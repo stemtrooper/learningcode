@@ -446,25 +446,48 @@ test("both shipped themes satisfy Pi's colour schema", async () => {
   assert.equal(light.colors.accent, "#0dacd6", "the darker cyan for light backgrounds");
 });
 
-test("the footer renders quota as a bar and survives narrow terminals", async () => {
+test("unlimited and no-daily-cap accounts are not rendered as zero allowance", async () => {
   const jiti = createJiti(import.meta.url);
-  const mod = await jiti.import("../extensions/footer.ts");
+  const footer = await jiti.import("../extensions/footer.ts");
+  const quota = await jiti.import("../extensions/spark-quota.ts");
 
-  // 10 cell meter, filled proportionally.
-  assert.equal(mod._internals.meter(0, 100), "░".repeat(10));
-  assert.equal(mod._internals.meter(100, 100), "█".repeat(10));
-  assert.equal(mod._internals.meter(50, 100), "█".repeat(5) + "░".repeat(5));
-  // Over budget must not overflow the bar.
-  assert.equal(mod._internals.meter(150, 100), "█".repeat(10));
+  // Only the explicit exemption means unlimited. A null daily cap can still
+  // have the weekly quota, so the client must not say "unlimited" or "/0K".
+  const exempt = { tokensUsed: 12345, dailyTokenLimit: null, quotaExempt: true, aiEnabled: true };
+  assert.equal(footer._internals.isUnlimited(exempt), true);
+  assert.match(footer._internals.format(exempt)[0], /unlimited/);
+  assert.match(quota._internals.quotaLine(exempt), /unlimited/);
 
-  assert.equal(mod._internals.pct(82, 100), "82%");
-  assert.equal(mod._internals.pct(5, 0), "--", "an exempt account has no limit to show");
+  const noDaily = { tokensUsed: 12345, dailyTokenLimit: null, quotaExempt: false, aiEnabled: true };
+  assert.equal(footer._internals.isUnlimited(noDaily), false);
+  const [noDailyFooter] = footer._internals.format(noDaily);
+  assert.match(noDailyFooter, /no daily token cap/);
+  assert.doesNotMatch(noDailyFooter, /\/\s*0k/);
+  const noDailyCommand = quota._internals.quotaLine(noDaily);
+  assert.match(noDailyCommand, /no daily token cap/);
+  assert.doesNotMatch(noDailyCommand, /\/0 tokens/);
 
-  const [bar, numbers] = mod._internals.format({ tokensUsed: 8200, dailyTokenLimit: 10000, aiEnabled: true });
-  assert.match(bar, /[█░]/, "the meter is drawn");
-  assert.ok(numbers.includes("8k/10k today"), `numbers were ${numbers}`);
+  const capped = { tokensUsed: 12345, dailyTokenLimit: 250000, quotaExempt: false, aiEnabled: true };
+  assert.equal(footer._internals.isUnlimited(capped), false);
+  assert.match(footer._internals.format(capped)[0], /5%/);
+  assert.match(quota._internals.quotaLine(capped), /12,345\/250,000 tokens \(5%\)/);
 });
 
+test("the footer meter still behaves for capped accounts", async () => {
+  const jiti = createJiti(import.meta.url);
+  const mod = await jiti.import("../extensions/footer.ts");
+  const block = String.fromCodePoint(0x2588);
+  const shade = String.fromCodePoint(0x2591);
+  assert.equal(mod._internals.meter(0, 100), shade.repeat(10));
+  assert.equal(mod._internals.meter(100, 100), block.repeat(10));
+  assert.equal(mod._internals.meter(50, 100), block.repeat(5) + shade.repeat(5));
+  assert.equal(mod._internals.meter(150, 100), block.repeat(10));
+  assert.equal(mod._internals.pct(82, 100), "82%");
+  assert.equal(mod._internals.pct(5, 0), "--", "a zero limit has no percentage");
+  const [bar, numbers] = mod._internals.format({ tokensUsed: 8200, dailyTokenLimit: 10000, quotaExempt: false, aiEnabled: true });
+  assert.match(bar, new RegExp("[" + block + shade + "]"));
+  assert.ok(numbers.includes("8k/10k today"));
+});
 test("the footer extension installs a footer and stops polling on shutdown", async () => {
   const jiti = createJiti(import.meta.url);
   const mod = await jiti.import("../extensions/footer.ts");

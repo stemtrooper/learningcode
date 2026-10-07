@@ -24,13 +24,22 @@ const TOKEN = process.env.SPARK_API_KEY || "";
 /** Two minutes. Enough to stay current, rarely enough to be invisible. */
 const POLL_MS = 120_000;
 
-type Quota = { tokensUsed: number; dailyTokenLimit: number; aiEnabled: boolean };
+type Quota = {
+  tokensUsed: number;
+  /** null means no daily cap, which is not the same as a cap of zero. */
+  dailyTokenLimit: number | null;
+  quotaExempt?: boolean;
+  aiEnabled: boolean;
+};
 
 const num = (value: unknown): number =>
   typeof value === "number" && Number.isFinite(value) ? value : 0;
 
 const pct = (used: number, limit: number): string =>
   limit > 0 ? `${Math.min(100, Math.round((used / limit) * 100))}%` : "--";
+
+/** Only Spark's explicit exemption removes every token ceiling. */
+const isUnlimited = (quota: Quota): boolean => quota.quotaExempt === true;
 
 /**
  * A ten cell meter. Text alone ("82%") is easy to skim past; a bar is read at a
@@ -44,10 +53,22 @@ function meter(used: number, limit: number, width = 10): string {
 
 function format(quota: Quota): string[] {
   if (quota.aiEnabled === false) return ["AI off — ask your teacher"];
-  const { tokensUsed, dailyTokenLimit } = quota;
+  const { tokensUsed } = quota;
+
+  if (isUnlimited(quota)) {
+    // No bar and no percentage: a full meter would imply a ceiling that is not
+    // there, and any percentage of infinity is noise.
+    return [`${Math.round(tokensUsed / 1000)}k used today  ·  unlimited`];
+  }
+
+  if (quota.dailyTokenLimit === null || quota.dailyTokenLimit === undefined) {
+    return [`${Math.round(tokensUsed / 1000)}k used today  ·  no daily token cap`];
+  }
+
+  const limit = num(quota.dailyTokenLimit);
   return [
-    `${meter(tokensUsed, dailyTokenLimit)} ${pct(tokensUsed, dailyTokenLimit)}`,
-    `${Math.round(tokensUsed / 1000)}k/${Math.round(dailyTokenLimit / 1000)}k today`,
+    `${meter(tokensUsed, limit)} ${pct(tokensUsed, limit)}`,
+    `${Math.round(tokensUsed / 1000)}k/${Math.round(limit / 1000)}k today`,
   ];
 }
 
@@ -95,9 +116,28 @@ export default function sparkFooter(pi: ExtensionAPI) {
             return [theme.fg("error", "  AI disabled for your account — ask your teacher")];
           }
 
+          // No ceiling: no meter and no percentage, because a full bar implies a
+          // limit that does not exist.
+          if (isUnlimited(quota)) {
+            return [
+              theme.fg("dim", `  ${Math.round(quota.tokensUsed / 1000)}k used today`) +
+                theme.fg("muted", "  ·  unlimited"),
+            ];
+          }
+
+          // A null daily cap does not mean unlimited: the weekly cap can still
+          // apply. Do not turn null into zero or show a misleading /0K allowance.
+          if (quota.dailyTokenLimit === null || quota.dailyTokenLimit === undefined) {
+            return [
+              theme.fg("dim", `  ${Math.round(quota.tokensUsed / 1000)}k used today`) +
+                theme.fg("muted", "  ·  no daily token cap"),
+            ];
+          }
+
           const { tokensUsed, dailyTokenLimit } = quota;
-          const bar = theme.fg("accent", meter(tokensUsed, dailyTokenLimit));
-          const percent = theme.fg("muted", pct(tokensUsed, dailyTokenLimit));
+          const limit = dailyTokenLimit;
+          const bar = theme.fg("accent", meter(tokensUsed, limit));
+          const percent = theme.fg("muted", pct(tokensUsed, limit));
 
           // Narrow terminals keep the bar and the percentage only; the absolute
           // token counts are the part that can be dropped.
@@ -105,7 +145,7 @@ export default function sparkFooter(pi: ExtensionAPI) {
 
           const numbers = theme.fg(
             "dim",
-            `${Math.round(tokensUsed / 1000)}k / ${Math.round(dailyTokenLimit / 1000)}k today`,
+            `${Math.round(tokensUsed / 1000)}k / ${Math.round(limit / 1000)}k today`,
           );
           return [`  ${bar} ${percent}  ${numbers}`];
         },
@@ -125,4 +165,4 @@ export default function sparkFooter(pi: ExtensionAPI) {
 }
 
 // Exported for tests.
-export const _internals = { format, meter, pct };
+export const _internals = { format, isUnlimited, meter, pct };

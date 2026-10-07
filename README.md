@@ -190,6 +190,11 @@ A footer shows your remaining quota whenever you are connected to Spark:
   █████░░░░░ 50%  125k / 250k today
 ```
 
+Quota-exempt accounts show `unlimited`. An account with no daily token cap but
+still subject to a weekly cap shows `no daily token cap` instead; Spark reports
+those as different states, and the client must not mistake a missing daily
+limit for either zero allowance or unlimited use.
+
 ---
 
 ## Troubleshooting

@@ -34,9 +34,46 @@ async function call(path: string): Promise<{ ok: true; body: unknown } | { ok: f
 
 const num = (value: unknown): number => (typeof value === "number" && Number.isFinite(value) ? value : 0);
 
-function quotaLine(body: Record<string, unknown>): string {
+type QuotaBody = {
+	day?: string;
+	tokensUsed?: number;
+  dailyTokenLimit?: number | null;
+  jobsUsed?: number;
+  dailyJobLimit?: number | null;
+  quotaExempt?: boolean;
+  aiEnabled?: boolean;
+};
+
+/** Only Spark's explicit exemption removes every token ceiling. */
+const isUnlimited = (body: QuotaBody): boolean => body.quotaExempt === true;
+
+const thousands = (value: number): string => `${Math.round(value / 1000)}k`;
+
+function quotaLine(body: QuotaBody): string {
 	const used = num(body.tokensUsed);
-	const limit = num(body.dailyTokenLimit);
+	if (isUnlimited(body)) {
+		return [
+			`Spark quota - ${used.toLocaleString()} tokens used, unlimited`,
+			"exempt",
+			`jobs ${num(body.jobsUsed)}`,
+			`day ${String(body.day ?? "?")}`,
+			body.aiEnabled === false ? "AI DISABLED for your account - ask your teacher" : "",
+		]
+			.filter(Boolean)
+			.join("  |  ");
+	}
+	if (body.dailyTokenLimit === null || body.dailyTokenLimit === undefined) {
+		return [
+			`Spark quota - ${used.toLocaleString()} tokens used today, no daily token cap`,
+			`jobs ${num(body.jobsUsed)}/${num(body.dailyJobLimit)}`,
+			`day ${String(body.day ?? "?")}`,
+			body.aiEnabled === false ? "AI DISABLED for your account - ask your teacher" : "",
+		]
+			.filter(Boolean)
+			.join("  |  ");
+	}
+
+	const limit = body.dailyTokenLimit;
 	const pct = limit > 0 ? ` (${Math.round((used / limit) * 100)}%)` : "";
 	return [
 		`Spark quota - ${used.toLocaleString()}/${limit.toLocaleString()} tokens${pct}`,
@@ -47,6 +84,8 @@ function quotaLine(body: Record<string, unknown>): string {
 		.filter(Boolean)
 		.join("  |  ");
 }
+
+export const _internals = { quotaLine, isUnlimited, thousands, num };
 
 /**
  * The queue view shape is not guaranteed, so surface the fields we recognise
@@ -70,7 +109,7 @@ export default function sparkQuota(pi: ExtensionAPI) {
 		handler: async (_args, ctx) => {
 			const result = await call("/me/quota");
 			ctx.ui.notify(
-				result.ok ? quotaLine(result.body as Record<string, unknown>) : `quota unavailable: ${result.error}`,
+				result.ok ? quotaLine(result.body as QuotaBody) : `quota unavailable: ${result.error}`,
 				result.ok ? "info" : "warning",
 			);
 		},
