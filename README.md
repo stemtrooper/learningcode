@@ -174,8 +174,8 @@ You do not have a token yet, or it is not cached. Run `learningcode --login` to
 enter a new one. If you never had one, ask your teacher.
 
 **`Token rejected (401)`**
-The token is wrong, or it was rotated and the old one no longer works.
-`learningcode --login`.
+The token was probably rotated, which revokes the previous one. Run `/spark-login`
+to confirm, then `learningcode --login` to enter the new one.
 
 **`AI off — ask your teacher` / `AI disabled for your account`**
 Spark has AI switched off for your account — usually a timetable window or a
