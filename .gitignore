@@ -1,5 +1,8 @@
 node_modules/
 *.log
+# Never commit a registry token. `npm config set` writes to your user .npmrc by
+# default, but a project-level one can still be created by accident.
+.npmrc
 .env
 .env.*
 .DS_Store
