@@ -178,45 +178,49 @@ test("--token is ignored, with a warning, for a non-Spark model", async () => {
   assert.match(stderr, /only applies to tlc-spark/);
 });
 
-test("the banner renders the word as readable block art and degrades when narrow", async () => {
+test("the banner keeps the figlet art intact and collapses when it cannot fit", async () => {
   const jiti = createJiti(import.meta.url);
   const mod = await jiti.import("../extensions/banner.ts");
 
   const art = mod.bannerArt();
-  assert.equal(art.length, 5, "banner is five rows tall");
+  assert.equal(art.length, 6, "the ANSI Shadow face is six rows tall");
 
-  // Every letter of LEARNINGCODE must have a glyph, or a row renders as blank.
+  // Every row must be box characters, full blocks or padding. A stray latin
+  // letter would mean the art got reflowed into something it is not.
   for (const line of art) {
-    assert.match(line, /\u2588/, `row should contain blocks: ${JSON.stringify(line)}`);
-    assert.doesNotMatch(line, /undefined/, "a missing glyph would leak into the art");
+    assert.match(line, /^[\u2588\u2550-\u255D ]+$/, "row must be art characters only");
   }
 
-  // Row 1 is the top of the glyphs; row 5 is the baseline. LEARNINGCODE is
-  // mostly flat-topped, so the first row should be dense, and the L at the
-  // start is a bare stem with only its foot filled.
-  assert.match(art[4], /^\u2588\u2588\u2588 \u2588\u2588\u2588/, "bottom row starts with L's foot then E");
+  // The face only lines up because each row keeps its exact offset: the L's top
+  // row starts flush left, the rest are indented one column. Losing that makes
+  // the whole banner look broken rather than merely misaligned.
+  assert.ok(art[0].startsWith("\u2588\u2588\u2557"), "row 0 should start flush with L's top bar");
+  assert.ok(art[1].startsWith(" \u2588\u2588\u2551"), "row 1 should be indented one column");
+  assert.ok(art[art.length - 1].startsWith(" \u255A"), "last row should open with the L's foot");
 
+  // The art is wider than a classic 80 column terminal, which is why the
+  // fallback exists. Pin the real number so a change is a deliberate decision.
   const width = mod.bannerWidth();
-  assert.ok(width >= 45 && width <= 60, `banner should suit an 80 column terminal, got ${width}`);
+  assert.equal(width, 101, "art width changed; re-check the 80 column fallback");
+  assert.ok(width > 80, "if this ever fits 80 columns the fallback can be widened");
 
-  // A theme stub is enough: the component only calls fg().
   const theme = { fg: (_token, text) => text };
   const banner = mod.createBanner(theme);
 
-  const wide = banner.render(100);
-  assert.ok(wide.length > 7, "wide render includes art, rule, tagline and hints");
+  const wide = banner.render(120);
+  assert.ok(wide.length > 8, "wide render includes art, rule, tagline and hints");
+  // Compare against the art itself rather than counting matches: a character-class
+  // count also matches the rule beneath the art.
+  for (const line of mod.bannerArt()) {
+    assert.ok(wide.includes("  " + line), "art row missing from render: " + JSON.stringify(line));
+  }
   assert.ok(wide.every((line) => line.startsWith("  ") || line === ""), "everything is indented");
 
-  const narrow = banner.render(40);
-  assert.ok(narrow.length < wide.length, "narrow terminals get the compact wordmark");
+  // 100 columns is one short of the art, so the wordmark shows instead.
+  const narrow = banner.render(100);
   assert.match(narrow.join("\n"), /learningcode/);
-  assert.doesNotMatch(narrow.join("\n"), /\u2588/, "no block art when it cannot fit");
-});
-
-test("banner art is rejected for letters with no glyph", async () => {
-  const jiti = createJiti(import.meta.url);
-  const mod = await jiti.import("../extensions/banner.ts");
-  assert.throws(() => mod.bannerArt("ZZ"), /no glyph/);
+  assert.doesNotMatch(narrow.join("\n"), /[\u2588\u2550-\u255D]/, "no art when it cannot fit");
+  assert.ok(narrow.length < wide.length, "narrow terminals get the compact wordmark");
 });
 
 test("the banner extension installs a header from session_start", async () => {
@@ -234,7 +238,7 @@ test("the banner extension installs a header from session_start", async () => {
 
   const component = headerFactory({}, { fg: (_t, text) => text });
   assert.equal(typeof component.render, "function");
-  assert.ok(component.render(100).some((line) => line.includes("\u2588")));
+  assert.ok(component.render(120).some((line) => line.includes("\u2588")));
 
   // Print and JSON runs load this extension too, but have no header to replace.
   for (const ctx of [

@@ -6,77 +6,59 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
  * Pi lets an extension replace the whole header, which is the supported way to
  * brand a fork without touching Pi's internals. The built-in header is Pi's own
  * logo plus key hints; we trade that for the TLC banner and a line of slash
- * commands, so nothing is invented about keybindings we cannot read.
+ * commands, so nothing is claimed about keybindings we cannot read.
  *
- * Rendering is delegated to the active theme's colour tokens (`accent`, `border`,
- * `dim`, `muted`) so the banner stays legible in light and dark terminals rather
- * than hard-coding colours that break on one of them.
+ * The art is the figlet "ANSI Shadow" face, kept verbatim rather than rebuilt from
+ * a glyph map: the double-line box characters only line up if every row keeps
+ * its exact offset, and a one-space drift makes the whole thing look broken.
+ *
+ * Rendering uses the active theme's colour tokens (`accent`, `border`, `dim`,
+ * `muted`) so the banner stays legible in light and dark terminals instead of
+ * hard-coding colours that break on one of them.
  */
 
 /** Structural types, so this file needs no runtime import from Pi's packages. */
 type ThemeLike = { fg(token: string, text: string): string };
 type HeaderComponent = { render(width: number): string[] };
 
-/**
- * A condensed 5-row block face, 3 columns per glyph except N at 4, because a
- * 3-column N reads as a filled blob. Spelled out rather than generated so the
- * letterforms can be adjusted by hand.
- */
-const GLYPHS: Record<string, readonly string[]> = {
-	L: ["█  ", "█  ", "█  ", "█  ", "███"],
-	E: ["███", "█  ", "███", "█  ", "███"],
-	A: [" █ ", "█ █", "███", "█ █", "█ █"],
-	R: ["███", "█ █", "███", "█ █", "█ █"],
-	N: ["█  █", "█ ██", "██ █", "█  █", "█  █"],
-	I: ["███", " █ ", " █ ", " █ ", "███"],
-	G: ["███", "█  ", "█ █", "█ █", "███"],
-	C: ["███", "█  ", "█  ", "█  ", "███"],
-	O: ["███", "█ █", "█ █", "█ █", "███"],
-	D: ["███", "█ █", "█ █", "█ █", "███"],
-};
-
-const WORD = "LEARNINGCODE";
-const ROWS = 5;
-const PAD = "  ";
-
-export const bannerArt = (word: string = WORD): string[] => {
-	const missing = [...new Set(word)].filter((letter) => !GLYPHS[letter]);
-	if (missing.length) throw new Error(`banner has no glyph for: ${missing.join(", ")}`);
-	return Array.from({ length: ROWS }, (_, row) =>
-		[...word].map((letter) => GLYPHS[letter][row]).join(" ").trimEnd(),
-	);
-};
+const ART: readonly string[] = [
+  "██╗     ███████╗ █████╗ ██████╗ ███╗   ██╗██╗███╗   ██╗ ██████╗     ██████╗ ██████╗ █████╗ ███████╗",
+  " ██║     ██╔════╝██╔══██╗██╔══██╗████╗  ██║██║████╗  ██║██╔════╝    ██╔════╝██╔═══██╗██╔══██╗██╔════╝",
+  " ██║     █████╗  ███████║██████╔╝██╔██╗ ██║██║██╔██╗ ██║██║  ███╗   ██║     ██║   ██║██║  ██║█████╗",
+  " ██║     ██╔══╝  ██╔══██║██╔══██╗██║╚██╗██║██║██║╚██╗██║██║   ██║   ██║     ██║   ██║██║  ██║██╔══╝",
+  " ███████╗███████╗██║  ██║██║  ██║██║ ╚████║██║██║ ╚████║╚██████╔╝   ╚██████╗╚██████╔╝██████╔╝███████╗",
+  " ╚══════╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝╚═╝  ╚═══╝ ╚═════╝     ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝",
+];
 
 const TAGLINE = "The Learning Curve · Sarawak";
 const HINTS = "/help commands · /quota today's spend · /hotkeys keys";
 
-/** Widest glyph row, so the caller can decide between full art and the wordmark. */
-export const bannerWidth = (word: string = WORD): number =>
-	Math.max(...bannerArt(word).map((line) => line.length));
+const PAD = "  ";
+
+/** A copy, so a caller mutating the result cannot corrupt later renders. */
+export const bannerArt = (): string[] => [...ART];
+
+export const bannerWidth = (): number => Math.max(...ART.map((line) => line.length));
 
 /**
- * Below this the block art wraps or collides with the prompt, so fall back to a
- * single line rather than draw something broken.
+ * The art is 101 columns, which does not fit the classic 80 column terminal.
+ * Below the art plus its indent we show a wordmark instead, because clipped box
+ * characters look like a rendering bug rather than a design.
  */
-const MIN_FULL_WIDTH = 52;
+const MIN_FULL_WIDTH = bannerWidth() + PAD.length;
 
 export function createBanner(theme: ThemeLike): HeaderComponent {
 	const art = bannerArt();
 	const artWidth = bannerWidth();
-	const accent = (text: string) => theme.fg("accent", text);
 
 	return {
 		render(width: number): string[] {
 			if (width < MIN_FULL_WIDTH) {
-				return [
-					"",
-					accent(PAD + "learningcode"),
-					theme.fg("muted", PAD + TAGLINE),
-				];
+				return ["", theme.fg("accent", PAD + "learningcode"), theme.fg("muted", PAD + TAGLINE)];
 			}
 
-			const lines = ["", ...art.map((line) => accent(PAD + line))];
-			lines.push(theme.fg("border", PAD + "─".repeat(artWidth)));
+			const lines = ["", ...art.map((line) => theme.fg("accent", PAD + line))];
+			lines.push(theme.fg("border", PAD + "═".repeat(artWidth)));
 			lines.push(theme.fg("muted", PAD + TAGLINE));
 			lines.push(theme.fg("dim", PAD + HINTS));
 			lines.push("");

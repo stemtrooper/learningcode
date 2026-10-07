@@ -52,18 +52,27 @@ reason this wrapper exists.
 The LEARNINGCODE block banner replaces Pi's header at startup:
 
 ```
-  █   ███  █  ███ █  █ ███ █  █ ███ ███ ███ ███ ███
-  █   █   █ █ █ █ █ ██  █  █ ██ █   █   █ █ █ █ █
-  █   ███ ███ ███ ██ █  █  ██ █ █ █ █   █ █ █ █ ███
-  █   █   █ █ █ █ █  █  █  █  █ █ █ █   █ █ █ █ █
-  ███ ███ █ █ █ █ █  █ ███ █  █ ███ ███ ███ ███ ███
-  ────────────────────────────────────────────────
+  ██╗     ███████╗ █████╗ ██████╗ ███╗   ██╗██╗███╗   ██╗ ██████╗     ██████╗ ██████╗ ██████╗ ███████╗
+   ██║     ██╔════╝██╔══██╗██╔══██╗████╗  ██║██║████╗  ██║██╔════╝    ██╔════╝██╔═══██╗██╔══██╗██╔════╝
+   ██║     █████╗  ███████║██████╔╝██╔██╗ ██║██║██╔██╗ ██║██║  ███╗   ██║     ██║   ██║██║  ██║█████╗
+   ██║     ██╔══╝  ██╔══██║██╔══██╗██║╚██╗██║██║██║╚██╗██║██║   ██║   ██║     ██║   ██║██║  ██║██╔══╝
+   ███████╗███████╗██║  ██║██║  ██║██║ ╚████║██║██║ ╚████║╚██████╔╝   ╚██████╗╚██████╔╝██████╔╝███████╗
+   ╚══════╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝╚═╝  ╚═══╝ ╚═════╝     ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝
+  ═════════════════════════════════════════════════════════════════════════════════════════════════════
   The Learning Curve · Sarawak
   /help commands · /quota today's spend · /hotkeys keys
 ```
 
-Colour comes from the active theme, so it stays legible in light and dark. Below
-52 columns it collapses to a wordmark rather than drawing art that will not fit.
+The figlet "ANSI Shadow" face, 101 columns wide, kept verbatim because the
+double-line box characters only align if every row keeps its exact offset.
+
+Colour comes from the active theme, so it stays legible in light and dark.
+
+**It needs a 103 column terminal.** Below that it collapses to a wordmark,
+rather than drawing art that would be clipped into something that looks broken.
+An 80 column terminal will show the compact form, so widen the window or reduce
+the art.
+
 It installs via `ctx.ui.setHeader`, the supported way to brand a fork.
 
 ## Other providers
