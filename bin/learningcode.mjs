@@ -240,13 +240,22 @@ async function main() {
 	const effectiveModel = requestedModel ?? `${PROVIDER_ID}/${MODEL_ID}`;
 	if (!requestedModel) forced.push("--model", effectiveModel);
 
-	// Default to the TLC theme, but never override an explicit choice: --theme on
-	// the command line, or LEARNINGCODE_THEME in the environment.
+	// Default to the TLC theme without overriding an explicit CLI choice.
+	// LEARNINGCODE_THEME flows through preferredTheme(), so it becomes the
+	// forced value rather than suppressing it. NB: Pi's --theme loads a theme
+	// *file or directory*, while --use-theme selects a theme *by name*.
+	// Passing "tlc-dark" to --theme made Pi warn "[Theme conflicts] ...
+	// theme path does not exist" on every login, so the name goes to
+	// --use-theme.
 	const userPickedTheme = toPi.some(
-		(arg) => arg === "--theme" || arg.startsWith("--theme="),
+		(arg) =>
+			arg === "--theme" ||
+			arg.startsWith("--theme=") ||
+			arg === "--use-theme" ||
+			arg.startsWith("--use-theme="),
 	);
-	if (!userPickedTheme && !process.env.LEARNINGCODE_THEME) {
-		forced.push("--theme", preferredTheme());
+	if (!userPickedTheme) {
+		forced.push("--use-theme", preferredTheme());
 	}
 
 	// Spark enforces one active generation per student, so subagents and parallel
