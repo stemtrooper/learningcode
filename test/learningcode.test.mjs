@@ -528,6 +528,9 @@ test("the footer extension installs a footer and stops polling on shutdown", asy
   // No token in this test process, so the footer must say so rather than draw an
   // empty bar that reads as "you have spent nothing".
   assert.match(line, /not on Spark|unavailable/);
+  // ...and every footer state ends with the exit hint.
+  assert.match(line, /ctrl\+c.*exit/);
+  assert.match(line, /esc.*interrupt/);
 
   await handlers.get("session_shutdown")();
 });

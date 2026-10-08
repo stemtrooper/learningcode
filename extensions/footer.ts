@@ -105,15 +105,21 @@ export default function sparkFooter(pi: ExtensionAPI) {
       tui = footerTui;
       return {
         render(width: number): string[] {
+          // Every path ends with the exit hint. Students asked how to quit,
+          // and the footer is the one line that is always on screen.
+          // (ctrl+c clears the editor; pressed twice, or on an empty editor
+          // via ctrl+d, it exits. These are Pi's default bindings.)
+          const hints = theme.fg("dim", "  ctrl+c exit  ·  esc interrupt");
+
           // Nothing to say off Spark, or no token: say so rather than draw a bar
           // full of empties that reads as "you have spent nothing".
           if (!TOKEN) {
-            return [theme.fg("dim", "  not on Spark — /login, or use --model opencode-go/…")];
+            return [theme.fg("dim", "  not on Spark — /login, or use --model opencode-go/…"), hints];
           }
-          if (!quota) return [theme.fg("dim", "  Spark quota unavailable")];
+          if (!quota) return [theme.fg("dim", "  Spark quota unavailable"), hints];
 
           if (quota.aiEnabled === false) {
-            return [theme.fg("error", "  AI disabled for your account — ask your teacher")];
+            return [theme.fg("error", "  AI disabled for your account — ask your teacher"), hints];
           }
 
           // No ceiling: no meter and no percentage, because a full bar implies a
@@ -122,6 +128,7 @@ export default function sparkFooter(pi: ExtensionAPI) {
             return [
               theme.fg("dim", `  ${Math.round(quota.tokensUsed / 1000)}k used today`) +
                 theme.fg("muted", "  ·  unlimited"),
+              hints,
             ];
           }
 
@@ -131,6 +138,7 @@ export default function sparkFooter(pi: ExtensionAPI) {
             return [
               theme.fg("dim", `  ${Math.round(quota.tokensUsed / 1000)}k used today`) +
                 theme.fg("muted", "  ·  no daily token cap"),
+              hints,
             ];
           }
 
@@ -141,13 +149,13 @@ export default function sparkFooter(pi: ExtensionAPI) {
 
           // Narrow terminals keep the bar and the percentage only; the absolute
           // token counts are the part that can be dropped.
-          if (width < 52) return [`  ${bar} ${percent}`];
+          if (width < 52) return [`  ${bar} ${percent}`, hints];
 
           const numbers = theme.fg(
             "dim",
             `${Math.round(tokensUsed / 1000)}k / ${Math.round(limit / 1000)}k today`,
           );
-          return [`  ${bar} ${percent}  ${numbers}`];
+          return [`  ${bar} ${percent}  ${numbers}`, hints];
         },
       };
     });
