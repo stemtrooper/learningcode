@@ -265,6 +265,7 @@ async function main() {
 	forced.push("--extension", join(here, "..", "extensions", "spark-quota.ts"));
 	forced.push("--extension", join(here, "..", "extensions", "footer.ts"));
 	forced.push("--extension", join(here, "..", "extensions", "banner.ts"));
+	forced.push("--extension", join(here, "..", "extensions", "orange-cat.ts"));
 	if (process.env.LEARNINGCODE_PI_FLAGS) {
 		forced.push(...process.env.LEARNINGCODE_PI_FLAGS.split(/\s+/).filter(Boolean));
 	}
