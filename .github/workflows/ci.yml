@@ -102,6 +102,7 @@ jobs:
         run: |
           docker run --rm \
             -e HOME=/tmp/lc-home \
+            -e SHELL=/bin/bash \
             -e LEARNINGCODE_ALLOW_ROOT=1 \
             -e LEARNINGCODE_RC_FILE=/tmp/lc-home/.bashrc \
             -v "$PWD:/repo:ro" \
@@ -115,5 +116,8 @@ jobs:
               apt-get install -y --no-install-recommends curl ca-certificates
               sh /repo/install.sh
               [ -x "$HOME/.learningcode/node/bin/node" ]
-              "$HOME/.learningcode/prefix/bin/learningcode" --version
+              # A new interactive terminal: the PATH line the installer wrote
+              # to .bashrc must be what makes the CLI work, the way it does
+              # for a student who opens a new tab.
+              bash -ic "learningcode --version"
             '
