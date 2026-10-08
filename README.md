@@ -1,4 +1,13 @@
-# learningcode
+```text
+██╗     ███████╗ █████╗ ██████╗ ███╗   ██╗██╗███╗   ██╗ ██████╗  ██████╗ ██████╗ ██████╗ ███████╗
+██║     ██╔════╝██╔══██╗██╔══██╗████╗  ██║██║████╗  ██║██╔════╝ ██╔════╝██╔═══██╗██╔══██╗██╔════╝
+██║     █████╗  ███████║██████╔╝██╔██╗ ██║██║██╔██╗ ██║██║  ███╗██║     ██║   ██║██║  ██║█████╗
+██║     ██╔══╝  ██╔══██║██╔══██╗██║╚██╗██║██║██║╚██╗██║██║   ██║██║     ██║   ██║██║  ██║██╔══╝
+███████╗███████╗██║  ██║██║  ██║██║ ╚████║██║██║ ╚████║╚██████╔╝╚██████╗╚██████╔╝██████╔╝███████╗
+╚══════╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝╚═╝  ╚═══╝ ╚═════╝  ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝
+```
+
+*The Learning Curve · Sarawak*
 
 A terminal coding agent for **The Learning Curve** students, running on TLC's own
 inference through **TLC-Spark**.
@@ -249,7 +258,7 @@ to Spark, and no telemetry is sent.
 learningcode --show-config     # show resolved paths and settings
 learningcode --login           # enter a new token
 learningcode --list-models     # every reachable model
-learningcode --theme dark      # use the upstream theme instead of TLC's
+learningcode --use-theme dark   # use the upstream theme instead of TLC's
 ```
 
 **Your edits are kept.** If you change the theme or the model configuration,
