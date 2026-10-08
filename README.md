@@ -39,7 +39,7 @@ there is no shared school key and no fallback to somebody else's account.
 | | |
 |---|---|
 | **Node.js** | **22.19.0 or newer** (24.x LTS recommended) |
-| **Disk** | about 120 MB |
+| **Disk** | about 120 MB, plus ~80 MB if the one-line installer has to fetch Node |
 | **Network** | must reach `spark.learning.com.my` |
 | **Token** | your personal `spark_live_…` from the Spark bench |
 | **Terminal** | 51+ columns for the banner; 99+ for the large one |
@@ -51,6 +51,26 @@ produces a confusing error later rather than at install time.
 ---
 
 ## Install
+
+### One line (macOS / Linux)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/stemtrooper/learningcode/main/install.sh | bash
+```
+
+The installer checks Node first. If yours is 22.19.0 or newer it uses it; if it
+is missing or too old, it fetches a private LTS build into
+`~/.learningcode/node` and puts it ahead of the old one on your PATH. Either
+way the package itself is installed with npm into `~/.learningcode/prefix`, a
+directory you own, and that prefix is added to your `~/.bashrc` or `~/.zshrc`
+between marker comments.
+
+No `sudo`, no `apt`, no changes to your system Python/Node packages. Open a new
+terminal when it finishes, then `learningcode --version`.
+
+Read the script before running it, as you should with anything piped into a
+shell. Prefer installing by hand, or want to pin a version? The regular
+instructions are below.
 
 ### Windows (PowerShell)
 
@@ -214,6 +234,12 @@ limit for either zero allowance or unlimited use.
 ---
 
 ## Troubleshooting
+
+**`The curl | bash installer failed`**
+The installer prints the failing step to stderr. Open a new terminal first: if
+it just installed its own Node, the PATH change only reaches new shells. If it
+still fails, install by hand with the npm steps above, and paste the
+installer's output to whoever supports your lab.
 
 **`Node 22.19.0 or newer is required`**
 Upgrade Node, then reinstall: `npm i -g @stemtrooper/learningcode`. On Linux this

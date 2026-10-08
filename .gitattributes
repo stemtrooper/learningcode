@@ -1,0 +1,4 @@
+# Shell scripts must keep LF endings everywhere. A Windows checkout with CRLF
+# fails with "bad interpreter: no such file or directory", which is invisible to
+# the developer who wrote it and fatal for every student who curls it.
+*.sh text eol=lf

@@ -49,3 +49,71 @@ jobs:
       # finds out.
       - name: Check the published tarball
         run: npm pack --dry-run
+
+  # The curl|bash installer is student-facing code, so it gets the same CI as
+  # the CLI: parse it under a real POSIX shell (Debian's is dash, and bash-only
+  # syntax breaks there silently), lint it, then run it for real in a HOME that
+  # has nothing in it. On a developer's machine "it worked" often just means
+  # their existing Node, npm config and PATH were carrying the script.
+  installer:
+    name: installer on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # -n only parses, which is the point: no Node is installed yet.
+      - name: Parse under a POSIX shell
+        run: sh -n install.sh
+
+      - name: ShellCheck
+        run: |
+          if ! command -v shellcheck; then brew install shellcheck; fi
+          shellcheck --severity=warning install.sh
+
+      - name: Install into an empty HOME
+        run: |
+          set -eu
+          export HOME="$RUNNER_TEMP/lc-home"
+          mkdir -p "$HOME"
+          # Keep the student's shell config out of the runner image so the step
+          # tests the PATH wiring rather than an rc file it inherited.
+          export LEARNINGCODE_RC_FILE="$HOME/.bashrc"
+          sh ./install.sh
+          grep -F '# >>> learningcode >>>' "$HOME/.bashrc"
+          "$HOME/.learningcode/prefix/bin/learningcode" --version
+
+  # The path above leans on whatever Node the runner image ships. This one runs
+  # in a container with no Node at all, which is the case that actually matters
+  # for a student on a fresh Ubuntu: the installer has to bootstrap Node into
+  # the student's own home, without apt, without sudo.
+  installer-bootstrap:
+    name: installer with no Node (container)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install with no Node and no npm
+        run: |
+          docker run --rm \
+            -e HOME=/tmp/lc-home \
+            -e LEARNINGCODE_ALLOW_ROOT=1 \
+            -e LEARNINGCODE_RC_FILE=/tmp/lc-home/.bashrc \
+            -v "$PWD:/repo:ro" \
+            ubuntu:24.04 \
+            sh -c '
+              set -eu
+              mkdir -p "$HOME"
+              # curl and wget are both absent from the slim image; the installer
+              # needs one of them, exactly like a real student would.
+              apt-get update -qq
+              apt-get install -y --no-install-recommends curl ca-certificates
+              sh /repo/install.sh
+              [ -x "$HOME/.learningcode/node/bin/node" ]
+              "$HOME/.learningcode/prefix/bin/learningcode" --version
+            '
