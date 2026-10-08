@@ -9,6 +9,8 @@
 
 *The Learning Curve · Sarawak*
 
+Follow on X: [@stemtrooper](https://x.com/stemtrooper) · [@ruffleseed](https://x.com/ruffleseed)
+
 A terminal coding agent for **The Learning Curve** students, running on TLC's own
 inference through **TLC-Spark**.
 
