@@ -24,6 +24,10 @@ const TOKEN = process.env.SPARK_API_KEY || "";
 /** Two minutes. Enough to stay current, rarely enough to be invisible. */
 const POLL_MS = 120_000;
 
+/** One braille frame per tick while the agent works. */
+const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const SPIN_MS = 120;
+
 type Quota = {
   tokensUsed: number;
   /** null means no daily cap, which is not the same as a cap of zero. */
@@ -88,7 +92,29 @@ async function fetchQuota(): Promise<Quota | null> {
 export default function sparkFooter(pi: ExtensionAPI) {
   let quota: Quota | null = null;
   let timer: ReturnType<typeof setInterval> | undefined;
+  let spinTimer: ReturnType<typeof setInterval> | undefined;
+  let working = false;
+  let frame = 0;
   let tui: TuiLike | undefined;
+
+  const repaint = () => tui?.requestRender?.();
+
+  const setWorking = (on: boolean) => {
+    working = on;
+    if (on) {
+      if (!spinTimer) {
+        spinTimer = setInterval(() => {
+          frame = (frame + 1) % SPINNER.length;
+          repaint();
+        }, SPIN_MS);
+        spinTimer.unref?.();
+      }
+    } else if (spinTimer) {
+      clearInterval(spinTimer);
+      spinTimer = undefined;
+    }
+    repaint();
+  };
 
   pi.on("session_start", async (_event, ctx) => {
     if (!ctx.hasUI || ctx.mode !== "tui") return;
@@ -109,7 +135,17 @@ export default function sparkFooter(pi: ExtensionAPI) {
           // and the footer is the one line that is always on screen.
           // (ctrl+c clears the editor; pressed twice, or on an empty editor
           // via ctrl+d, it exits. These are Pi's default bindings.)
-          const hints = theme.fg("dim", "  ctrl+c exit  ·  esc interrupt");
+          //
+          // While the agent works the hint line becomes the working
+          // indicator instead: an animated frame plus the interrupt key.
+          // Pi has its own status spinner, but the footer is the TLC-owned
+          // surface, so the motion lives here where it cannot be restyled
+          // away from the brand.
+          const idleHints = theme.fg("dim", "  ctrl+c exit  ·  esc interrupt");
+          const hints = working
+            ? theme.fg("accent", `  ${SPINNER[frame]} working…`) +
+              theme.fg("muted", "  ·  esc to interrupt")
+            : idleHints;
 
           // Nothing to say off Spark, or no token: say so rather than draw a bar
           // full of empties that reads as "you have spent nothing".
@@ -166,9 +202,18 @@ export default function sparkFooter(pi: ExtensionAPI) {
   });
 
   pi.on("session_shutdown", async () => {
+    setWorking(false);
     if (timer) clearInterval(timer);
     timer = undefined;
     tui = undefined;
+  });
+
+  pi.on("agent_start", async () => {
+    setWorking(true);
+  });
+
+  pi.on("agent_end", async () => {
+    setWorking(false);
   });
 }
 

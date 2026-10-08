@@ -535,6 +535,36 @@ test("the footer extension installs a footer and stops polling on shutdown", asy
   await handlers.get("session_shutdown")();
 });
 
+test("the footer swaps its hint line for a working indicator while the agent runs", async () => {
+  const jiti = createJiti(import.meta.url);
+  const mod = await jiti.import("../extensions/footer.ts");
+
+  const handlers = new Map();
+  let footerFactory;
+  const ctx = { hasUI: true, mode: "tui", ui: { setFooter: (f) => (footerFactory = f) } };
+
+  mod.default({ on: (event, fn) => handlers.set(event, fn) });
+  assert.ok(handlers.has("agent_start"), "must track when work begins");
+  assert.ok(handlers.has("agent_end"), "must track when work ends");
+
+  await handlers.get("session_start")({}, ctx);
+  const theme = { fg: (_t, text) => text };
+  const component = footerFactory({}, theme);
+
+  assert.match(component.render(80).join(""), /ctrl\+c.*exit/);
+
+  await handlers.get("agent_start")();
+  const working = component.render(80).join("");
+  assert.match(working, /working…/, "motion plus a label while the agent runs");
+  assert.match(working, /esc to interrupt/);
+  assert.doesNotMatch(working, /ctrl\+c/, "the exit hint steps aside while working");
+
+  await handlers.get("agent_end")();
+  assert.match(component.render(80).join(""), /ctrl\+c.*exit/, "hints return when done");
+
+  await handlers.get("session_shutdown")();
+});
+
 test("the banner survives a theme that rejects non-token colours", async () => {
   const jiti = createJiti(import.meta.url);
   const mod = await jiti.import("../extensions/banner.ts");
