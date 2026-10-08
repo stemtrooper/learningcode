@@ -152,9 +152,57 @@ export function createBanner(theme: ThemeLike): HeaderComponent {
  * right moment: extensions are loaded in print and JSON modes too, where there is
  * no header to replace, and starting work in the factory would run for those.
  */
+
+/** Terminal tab title. Just enough of the event context to set it. */
+const TITLE = "learningcode by the learning curve";
+type TitleContext = {
+  hasUI: boolean;
+  mode: string;
+  ui: { setTitle(title: string): void };
+};
+
+/**
+ * Pi rewrites its own π title after extensions bind and again after its async
+ * startup package check on Windows, so one write is never enough. The title is
+ * set on every event where Pi rewrites its own (startup, renames, new turns),
+ * plus once deferred past the startup check. Each write is last-writer-wins in
+ * our favour on at least one of those paths.
+ */
+const TITLE_REASSERT_MS = 2500;
+
 export default function learningcodeBanner(pi: ExtensionAPI) {
-	pi.on("session_start", async (_event, ctx) => {
-		if (!ctx.hasUI || ctx.mode !== "tui") return;
-		ctx.ui.setHeader((_tui, theme) => createBanner(theme as ThemeLike));
-	});
+  let titleTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const applyTitle = (ctx: TitleContext) => {
+    try {
+      ctx.ui.setTitle(TITLE);
+    } catch {
+      // Cosmetic only: a title failure must never break startup.
+    }
+  };
+
+  const titleHook =
+    (defer: boolean) => async (_event: unknown, ctx: TitleContext) => {
+      if (!ctx.hasUI || ctx.mode !== "tui") return;
+      applyTitle(ctx);
+      if (!defer) return;
+      if (titleTimer) clearTimeout(titleTimer);
+      titleTimer = setTimeout(() => {
+        titleTimer = undefined;
+        applyTitle(ctx);
+      }, TITLE_REASSERT_MS);
+      titleTimer.unref?.();
+    };
+
+  pi.on("session_start", async (_event, ctx) => {
+    if (!ctx.hasUI || ctx.mode !== "tui") return;
+    ctx.ui.setHeader((_tui, theme) => createBanner(theme as ThemeLike));
+    await titleHook(true)(_event, ctx);
+  });
+  pi.on("session_info_changed", titleHook(false));
+  pi.on("agent_start", titleHook(false));
+  pi.on("session_shutdown", async () => {
+    if (titleTimer) clearTimeout(titleTimer);
+    titleTimer = undefined;
+  });
 }

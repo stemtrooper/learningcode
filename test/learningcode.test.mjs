@@ -630,6 +630,36 @@ test("appearance picks the cyan, getColorMode picks the encoding", async () => {
   );
 });
 
+test("the banner brands the terminal tab on every title-rewriting event", async () => {
+  const jiti = createJiti(import.meta.url);
+  const mod = await jiti.import("../extensions/banner.ts");
+
+  const handlers = new Map();
+  const titles = [];
+  const ctx = {
+    hasUI: true,
+    mode: "tui",
+    ui: { setHeader: () => {}, setTitle: (t) => titles.push(t) },
+  };
+
+  mod.default({ on: (event, fn) => handlers.set(event, fn) });
+
+  // Pi rewrites its own title after extensions bind, so the brand is applied
+  // on startup, on renames, and on new turns alike.
+  for (const event of ["session_start", "session_info_changed", "agent_start"]) {
+    assert.ok(handlers.has(event), `must hook ${event}`);
+    await handlers.get(event)({}, ctx);
+    assert.equal(titles[titles.length - 1], "learningcode by the learning curve");
+  }
+
+  // Print and JSON modes have no tab to brand.
+  const before = titles.length;
+  await handlers.get("session_start")({}, { hasUI: false, mode: "print", ui: ctx.ui });
+  assert.equal(titles.length, before);
+
+  await handlers.get("session_shutdown")();
+});
+
 test("the Spark token reaches Pi by both routes, so they cannot drift", async () => {
   /**
    * The regression this locks down: Pi prefers a stored credential in auth.json over
