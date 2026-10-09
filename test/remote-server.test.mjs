@@ -102,7 +102,12 @@ test("a phone message reaches the agent and its response comes back", async () =
 	try {
 		const agent = await connectAgent(agentUrl, "s-route");
 		const phone = await connectPhone(uiUrl, "s-route");
-		await waitFor(phone, "attached");
+		const attached = await waitFor(phone, "attached");
+
+		// The browser must never receive anything it could use to mint a new
+		// credential or read someone else's session.
+		assert.ok(!("tokenHash" in (attached.session ?? {})), "no token hash in the attached frame");
+		assert.ok(!("token" in (attached.session ?? {})), "no token in the attached frame");
 
 		send(phone, { type: "message", text: "make the led blink" });
 
