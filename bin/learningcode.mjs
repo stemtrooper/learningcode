@@ -157,13 +157,22 @@ function extraPiFlags() {
 const REMOTE_HELP = `learningcode remote - control this session from your phone
 
 Usage
-  learningcode remote [--resume]     start a remote session in this directory
+  learningcode remote --serve        run everything here: relay, agent, phone link
+  learningcode remote [--resume]     connect this directory to a relay server
   learningcode remote status         what is running, and where
   learningcode remote stop           stop the remote session
   learningcode remote rotate         invalidate every phone link, mint a new one
   learningcode remote-server         run the relay server for local development
 
 Options
+  --serve             start the relay inside this process, so there is no key
+                      to copy and no second terminal. The phone link it prints
+                      already points at this computer.
+  --tunnel            open the relay to the internet through Cloudflare, so the
+                      phone works anywhere (needs cloudflared, once:
+                      winget install --id Cloudflare.cloudflared).
+                      Implies --serve.
+  --port <n>          relay port (default 8787)
   --resume            continue this project's most recent conversation instead
                       of starting a new one
   --server <url>      relay server, e.g. ws://school.example:8787/agent
@@ -248,6 +257,10 @@ async function runRemoteCommand({ command, subcommand, flags }) {
 				serverUrl: flags.server,
 				enrollKey: flags.key,
 				resume: Boolean(flags.resume),
+				serve: Boolean(flags.serve),
+				tunnel: Boolean(flags.tunnel),
+				port: flags.port ? Number(flags.port) : undefined,
+				host: flags.host,
 			});
 			return;
 		default:
