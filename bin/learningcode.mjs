@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import {
@@ -13,11 +13,16 @@ import {
 	compareVersions,
 	sparkBaseUrl,
 } from "../lib/config.mjs";
-import { GO_PROVIDER, saveProviderKey } from "../lib/auth.mjs";
+import { GO_PROVIDER, loggedInProviders, saveProviderKey, visibleModelPatterns } from "../lib/auth.mjs";
+import {
+	TOKENHARBOR_PROVIDER,
+	ensureTokenHarborProvider,
+	looksLikeTokenHarborKey,
+} from "../lib/tokenharbor.mjs";
 import { ensureSparkProvider, modelsPath, retargetProvider } from "../lib/models.mjs";
 import { ensureQuietStartup } from "../lib/settings.mjs";
 import { ensureThemes, preferredTheme } from "../lib/themes.mjs";
-import { hasToken, looksLikeToken, resolveToken, writeCachedToken } from "../lib/token.mjs";
+import { hasToken, looksLikeToken, promptSecret, resolveToken, writeCachedToken } from "../lib/token.mjs";
 import { agentEnvironment, forcedPiArgs, resolvePiEntry } from "../lib/pi.mjs";
 import { remoteStatus, remoteStop, rotateRemote, runRemote, runRemoteServer } from "../lib/remote/index.mjs";
 import { formatNotice, markNoticeShown, pendingNotice } from "../lib/changelog.mjs";
@@ -25,7 +30,7 @@ import { formatNotice, markNoticeShown, pendingNotice } from "../lib/changelog.m
 const require = createRequire(import.meta.url);
 
 const OWN_FLAGS = new Set(["--help", "-h", "--version", "-v", "--login", "--show-config"]);
-const OWN_FLAGS_WITH_VALUE = new Set(["--token", "--base-url"]);
+const OWN_FLAGS_WITH_VALUE = new Set(["--token", "--base-url", "--login-provider"]);
 const HELP = `learningcode - TLC Spark coding agent
 
 Usage
@@ -70,7 +75,7 @@ Remote
 
 /** Split our flags from the ones meant for Pi. */
 function parseArgs(argv) {
-	const own = { help: false, version: false, login: false, showConfig: false };
+	const own = { help: false, version: false, login: false, showConfig: false, loginProvider: null };
 	const toPi = [];
 	let explicitToken;
 	let baseUrl;
@@ -94,6 +99,7 @@ function parseArgs(argv) {
 			i += 1;
 			if (arg === "--token") explicitToken = value;
 			if (arg === "--base-url") baseUrl = value;
+			if (arg === "--login-provider") own.loginProvider = value;
 			continue;
 		}
 
@@ -150,6 +156,21 @@ function fail(message, code = 1) {
 }
 
 /** Extra Pi flags the student exports for their machine, on every launch. */
+/**
+ * The catalogue Pi knows, as `pi --list-models` prints it. No request is made.
+ * Empty on failure, so the picker falls back to Pi's default rather than failing
+ * the launch.
+ */
+function piModelListing(piEntry, dir) {
+	const result = spawnSync(process.execPath, [piEntry, "--list-models"], {
+		encoding: "utf-8",
+		timeout: 20000,
+		// Same agent folder as the real session, so models.json (TLC-Spark,
+		// TokenHarbor) is visible to the listing.
+		env: { ...process.env, ...agentEnvironment({ dir, token: null }) },
+	});
+	return result.status === 0 ? result.stdout : "";
+}
 function extraPiFlags() {
 	const raw = process.env.LEARNINGCODE_PI_FLAGS;
 	return raw ? raw.split(/\s+/).filter(Boolean) : [];
@@ -357,6 +378,7 @@ async function main() {
 		await retargetProvider(dir, baseUrl);
 	}
 	await ensureSparkProvider(dir);
+	await ensureTokenHarborProvider(dir).catch(() => {});
 	await ensureThemes(dir);
 	await ensureQuietStartup(dir);
 
@@ -384,8 +406,14 @@ async function main() {
 	// The model, theme, skills and extension flags are shared with
 	// `learningcode remote` through lib/pi.mjs, so a remote session cannot drift
 	// from an interactive one.
+	// Only providers with a stored key (or env var) appear in /model. A student who
+	// passed their own --model or --models keeps exactly what they asked for.
+	const userPickedModels = toPi.some((arg) => arg === "--models" || arg.startsWith("--models="));
+	const scope = !requestedModel && !userPickedModels ? visibleModelPatterns(piModelListing(piEntry, dir), await loggedInProviders(dir)) : null;
+
 	const forced = forcedPiArgs({
 		model: effectiveModel && !requestedModel ? effectiveModel : undefined,
+		scope,
 		theme: userPickedTheme ? null : preferredTheme(),
 		extraFlags: extraPiFlags(),
 	});
@@ -429,6 +457,24 @@ async function main() {
 		process.stderr.write(
 			`learningcode: --token only applies to ${PROVIDER_ID}; ignoring it for ${effectiveModel}.\n`,
 		);
+	}
+
+	// `learningcode --login-provider tokenharbor`: store a provider key so its
+	// models appear in the picker. Only providers with a stored key are shown.
+	if (own.loginProvider) {
+		const provider = own.loginProvider.toLowerCase();
+		if (provider !== TOKENHARBOR_PROVIDER) {
+			fail(`no login set up for "${own.loginProvider}". Available: ${TOKENHARBOR_PROVIDER}`);
+		}
+		await ensureTokenHarborProvider(dir);
+		process.stdout.write("Get a thk_ key at https://tokenharbor.ai/dashboard/api-keys (a free account works).\n");
+		const key = (await promptSecret("TokenHarbor key (thk_...): ")).trim();
+		if (!looksLikeTokenHarborKey(key)) {
+			fail("that does not look like a TokenHarbor key (they start with thk_). Nothing was saved.");
+		}
+		await saveProviderKey(dir, TOKENHARBOR_PROVIDER, key);
+		process.stdout.write("Saved. TokenHarbor models now appear in /model.\n");
+		return;
 	}
 
 	if (own.showConfig) {
