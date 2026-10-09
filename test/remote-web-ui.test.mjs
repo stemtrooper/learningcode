@@ -50,3 +50,33 @@ test("the page keeps its text plain: no transcript text is ever written as HTML"
 	assert.doesNotMatch(script, /\.innerHTML\s*=\s*(?!"")(?!'')[^;]*(entry|msg|text|event)/i);
 });
 
+
+test("the empty state is a narrow centred paragraph, not full-width type", () => {
+	// A phone screenshot showed the no-link sentence stretched across the whole
+	// width in ragged columns. The empty paragraph must cap its own measure
+	// and centre, whatever the viewport does.
+	const html = remoteWebUi();
+	assert.match(html, /\.empty\s*\{[^}]*max-width:\s*34ch/);
+	assert.match(html, /\.empty\s*\{[^}]*text-align:\s*center/);
+	assert.match(html, /text-size-adjust:\s*100%/);
+});
+
+test("a project folder named learningcode does not repeat the brand", () => {
+	// The header already says LEARNINGCODE; meta.name is often the checkout
+	// folder, i.e. the same word again. The page must fall back to "remote".
+	const html = remoteWebUi();
+	assert.match(html, /learningcode.*remote|remote.*learningcode/i);
+	assert.match(html, /\^learningcode\$/i);
+});
+
+test("the model button remembers its label across reloads", () => {
+	// Until the first models frame arrives over a slow tunnel, "choose model"
+	// reads as if nothing were selected. The label persists in localStorage.
+	const html = remoteWebUi();
+	assert.match(html, /lc-model-name/);
+});
+
+test("the composer shows when the computer cannot hear you", () => {
+	const html = remoteWebUi();
+	assert.match(html, /form\.offline #text/);
+});

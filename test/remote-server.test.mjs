@@ -285,6 +285,7 @@ test("the UI is served over plain HTTP and is phone-shaped", async () => {
 
 		const response = await fetch(`${uiUrl}`);
 		assert.equal(response.status, 200);
+		assert.equal(response.headers.get("cache-control"), "no-store", "tunnel and browser must not cache the page");
 		const served = await response.text();
 		assert.match(served, /LearningCode Remote/);
 	} finally {
