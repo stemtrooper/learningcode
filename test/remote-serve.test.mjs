@@ -29,9 +29,9 @@ test("a tunnel link points at the tunnel, not the loopback", () => {
 	assert.ok(link.startsWith("https://fine-walls.trycloudflare.com/#/s/abc123?"), link);
 });
 
-test("without cloudflared, --tunnel fails with the install command, not a stack trace", async () => {
+test("a tunnel that cannot start says what went wrong, with a way out", async () => {
 	await assert.rejects(
 		() => startTunnel(9, () => {}, "definitely-not-a-real-binary-xyz"),
-		/winget install --id Cloudflare\.cloudflared/,
+		/cloudflared would not start/,
 	);
 });
