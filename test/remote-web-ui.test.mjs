@@ -39,7 +39,7 @@ test("the logo scales with the screen, so the 47-column banner fits every phone"
 	// The banner is 47 columns, sized in vw so it stays on one line. The browser
 	// check measured it fitting at 390, 360 and 320 CSS pixels.
 	const html = remoteWebUi();
-	assert.match(html, /font-size: min\(12px, 3\.1vw\)/);
+	assert.match(html, /font-size: min\(8px, 2\.1vw\)/);
 });
 
 test("the page keeps its text plain: no transcript text is ever written as HTML", () => {
