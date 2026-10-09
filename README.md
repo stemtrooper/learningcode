@@ -284,6 +284,10 @@ learningcode -c                    # continue your last session
 learningcode --mode json           # machine-readable output
 ```
 
+When you quit a session, it prints a line starting `To resume this session:`.
+That line comes from Pi and shows `pi --session ...`. Use `learningcode -c`
+instead; it continues the same conversation.
+
 ---
 
 ## What it looks like
