@@ -80,3 +80,9 @@ test("the composer shows when the computer cannot hear you", () => {
 	const html = remoteWebUi();
 	assert.match(html, /form\.offline #text/);
 });
+
+test("the transcript puts you on the right and learningcode on the left", () => {
+	const html = remoteWebUi();
+	assert.match(html, /\.you\s*\{[^}]*align-items:\s*flex-end/);
+	assert.match(html, /\.agent\s*\{[^}]*align-items:\s*flex-start/);
+});
