@@ -34,3 +34,22 @@ test("a bare server address, with no session, is still refused", () => {
 test("a session link without a token parses to an empty token, so the server refuses it", () => {
 	assert.deepEqual(parse("#/s/abc"), { sessionId: "abc", token: "" });
 });
+
+test("the logo steps down on narrow phones, so it never needs sideways scrolling", () => {
+	// The banner is 97 characters wide; at 6.5px that needs more than 360px.
+	// These are the breakpoints the browser check measured to fit at 390, 360
+	// and 320 CSS pixels.
+	const html = remoteWebUi();
+	assert.match(html, /@media \(max-width: 400px\) \{ \.logo \{ font-size: 5\.6px; \} \}/);
+	assert.match(html, /@media \(max-width: 350px\) \{ \.logo \{ font-size: 5px; \} \}/);
+});
+
+test("the page keeps its text plain: no transcript text is ever written as HTML", () => {
+	// Messages from the agent and the phone go through textContent, so model
+	// output cannot inject markup. A stray innerHTML on transcript text would
+	// make the page an injection point.
+	const html = remoteWebUi();
+	const script = html.slice(html.indexOf("<script>"), html.indexOf("</script>"));
+	assert.doesNotMatch(script, /\.innerHTML\s*=\s*(?!"")(?!'')[^;]*(entry|msg|text|event)/i);
+});
+
