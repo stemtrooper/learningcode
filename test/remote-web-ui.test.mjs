@@ -35,13 +35,11 @@ test("a session link without a token parses to an empty token, so the server ref
 	assert.deepEqual(parse("#/s/abc"), { sessionId: "abc", token: "" });
 });
 
-test("the logo steps down on narrow phones, so it never needs sideways scrolling", () => {
-	// The banner is 97 characters wide; at 6.5px that needs more than 360px.
-	// These are the breakpoints the browser check measured to fit at 390, 360
-	// and 320 CSS pixels.
+test("the logo scales with the screen, so the 47-column banner fits every phone", () => {
+	// The banner is 47 columns, sized in vw so it stays on one line. The browser
+	// check measured it fitting at 390, 360 and 320 CSS pixels.
 	const html = remoteWebUi();
-	assert.match(html, /@media \(max-width: 400px\) \{ \.logo \{ font-size: 5\.6px; \} \}/);
-	assert.match(html, /@media \(max-width: 350px\) \{ \.logo \{ font-size: 5px; \} \}/);
+	assert.match(html, /font-size: min\(12px, 3\.1vw\)/);
 });
 
 test("the page keeps its text plain: no transcript text is ever written as HTML", () => {
