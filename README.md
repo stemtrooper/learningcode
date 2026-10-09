@@ -144,35 +144,53 @@ Continue and steer a session from your phone. The agent keeps running on your
 computer, with its filesystem, shell, Git and USB devices; the phone is a remote
 for it.
 
+**Start it, in your project folder:**
+
 ```bash
-learningcode remote
+learningcode remote --tunnel
 ```
 
-It prints a link to open on your phone, plus a pairing code. Nothing is exposed
-inbound: your computer opens the connection to the relay server, so the phone
-can only reach a session that your computer has already announced.
+The first run downloads cloudflared once, into `~/.learningcode/bin`. After that
+it starts straight away and prints a QR code. Point your phone camera at it and
+open the page. The text link is printed under the code in case the camera
+struggles.
 
-```text
-learningcode remote is live: arduino-robot
+With `--tunnel`, the phone can reach your session from any network. Without it,
+the link works on your own wifi only.
 
-  Open on your phone: https://…/#/s/8fK2…?t=9Qx…
-  Pairing code:       4FQ7 2KDM
+**Continue an existing conversation** (quit the interactive session first):
 
-  Ctrl+C to stop.
+```bash
+learningcode remote --tunnel --resume
 ```
+
+`--resume` continues this project's last conversation. Without it, the phone
+starts a new thread.
+
+Nothing is exposed inbound: your computer opens the connection to the relay, so
+the phone can only reach a session your computer has announced.
 
 ### Using it
 
-The phone shows your project, whether the computer is online, the conversation
-so far, and a compose box. Messages arrive as they stream, tool runs appear as
-one line each (`Running: arduino-cli compile …` / `✓ done`), and closing the
-browser loses nothing — reconnect and the same conversation is there.
+The phone shows your project, the model in use, whether the computer is online,
+and the conversation so far. Messages stream as they arrive, and tool runs show
+as one line each (`running bash…` / `done bash`). Tap the model name to switch
+models; the list shows only the models your computer can reach, grouped by
+provider. Tap **Stop** to halt a running turn.
+
+Closing the browser loses nothing. Reconnect and the same conversation is there.
 
 ```bash
 learningcode remote status    # what is running, and from which directory
-learningcode remote rotate    # invalidate every phone link at once
+learningcode remote rotate    # cancel every old phone link at once
 learningcode remote stop      # stop the session
 ```
+
+**The phone link is a password** for the session. Anyone holding it can send
+messages to the agent. Run `learningcode remote rotate` if it is shared by
+mistake. The computer must stay on with the command running: when that terminal
+closes, the phone loses the session. The conversation itself is kept, so
+`--resume` brings it back.
 
 ### Running your own relay
 

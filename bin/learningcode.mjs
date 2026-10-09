@@ -20,6 +20,7 @@ import { ensureThemes, preferredTheme } from "../lib/themes.mjs";
 import { hasToken, looksLikeToken, resolveToken, writeCachedToken } from "../lib/token.mjs";
 import { agentEnvironment, forcedPiArgs, resolvePiEntry } from "../lib/pi.mjs";
 import { remoteStatus, remoteStop, rotateRemote, runRemote, runRemoteServer } from "../lib/remote/index.mjs";
+import { formatNotice, markNoticeShown, pendingNotice } from "../lib/changelog.mjs";
 
 const require = createRequire(import.meta.url);
 
@@ -315,6 +316,18 @@ async function main() {
 	checkNodeVersion();
 
 	const dir = agentDir();
+
+	// Once per upgrade, and only for an interactive session: print and JSON
+	// runs are read by scripts, and a notice on their stdout would corrupt them.
+	const interactive = process.stdout.isTTY && !toPi.includes("-p") && !toPi.includes("--print") && !toPi.includes("--mode");
+	if (interactive) {
+		const notice = await pendingNotice(version, dir);
+		if (notice) {
+			process.stdout.write(formatNotice(notice) + "\n");
+			await markNoticeShown(version, dir);
+		}
+	}
+
 	const piEntry = resolvePiEntry();
 	if (!piEntry) {
 		fail(
