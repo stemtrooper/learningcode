@@ -2,8 +2,6 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import {
 	MODEL_ID,
 	PI_AGENT_DIR_ENV,
@@ -20,13 +18,13 @@ import { ensureSparkProvider, modelsPath, retargetProvider } from "../lib/models
 import { ensureQuietStartup } from "../lib/settings.mjs";
 import { ensureThemes, preferredTheme } from "../lib/themes.mjs";
 import { hasToken, looksLikeToken, resolveToken, writeCachedToken } from "../lib/token.mjs";
+import { agentEnvironment, forcedPiArgs, resolvePiEntry } from "../lib/pi.mjs";
+import { remoteStatus, remoteStop, rotateRemote, runRemote, runRemoteServer } from "../lib/remote/index.mjs";
 
-const here = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 
 const OWN_FLAGS = new Set(["--help", "-h", "--version", "-v", "--login", "--show-config"]);
 const OWN_FLAGS_WITH_VALUE = new Set(["--token", "--base-url"]);
-
 const HELP = `learningcode - TLC Spark coding agent
 
 Usage
@@ -63,6 +61,10 @@ Environment
   LEARNINGCODE_PI_FLAGS       extra flags appended to every Pi launch
   OPENCODE_API_KEY            auth for the opencode-go / opencode-zen providers
   ${PI_AGENT_DIR_ENV}  set automatically; points Pi at the learningcode agent dir
+
+Remote
+  learningcode remote         continue this project's session from your phone
+  learningcode remote help    how the phone side works
 `;
 
 /** Split our flags from the ones meant for Pi. */
@@ -146,38 +148,111 @@ function fail(message, code = 1) {
 	process.exit(code);
 }
 
+/** Extra Pi flags the student exports for their machine, on every launch. */
+function extraPiFlags() {
+	const raw = process.env.LEARNINGCODE_PI_FLAGS;
+	return raw ? raw.split(/\s+/).filter(Boolean) : [];
+}
+
+const REMOTE_HELP = `learningcode remote - control this session from your phone
+
+Usage
+  learningcode remote [--resume]     start a remote session in this directory
+  learningcode remote status         what is running, and where
+  learningcode remote stop           stop the remote session
+  learningcode remote rotate         invalidate every phone link, mint a new one
+  learningcode remote-server         run the relay server for local development
+
+Options
+  --resume            continue this project's most recent conversation instead
+                      of starting a new one
+  --server <url>      relay server, e.g. ws://school.example:8787/agent
+                      (default: $LEARNINGCODE_REMOTE_SERVER)
+  --key <key>         enrolment key from whoever runs the server
+                      (default: $LEARNINGCODE_REMOTE_KEY)
+
+The computer opens the connection to the server; nothing is exposed inbound.
+The phone link, with a per-session token, is printed when you start.
+
+Environment
+  LEARNINGCODE_REMOTE_SERVER  relay server URL
+  LEARNINGCODE_REMOTE_KEY     enrolment key
+  LEARNINGCODE_REMOTE_HOST    server bind host (remote-server, default 127.0.0.1)
+  LEARNINGCODE_REMOTE_PORT    server bind port (remote-server, default 8787)
+  LEARNINGCODE_REMOTE_STATE   where the server keeps its registry
+`;
+
 /**
- * Locate Pi's bundled CLI entry. Going through the resolved package entry keeps
- * this working on Windows, where the .bin shim is a .cmd file that cannot be
- * spawned directly without a shell.
+ * Parse `learningcode remote …` into a call.
  *
- * Must use `import.meta.resolve`: the published package declares only an
- * `import` condition in its exports map, so `require.resolve` fails with
- * ERR_PACKAGE_PATH_NOT_EXPORTED.
+ * Returns null when the first argument is not a remote command, so the normal
+ * launcher path is untouched for everything else. Subcommands are words
+ * (`status`, `stop`) so a student typing `learningcode remote stop` does not
+ * have to remember a flag.
  */
-function resolvePiEntry() {
-	const candidates = [];
+function parseRemoteCommand(argv) {
+	if (argv[0] !== "remote" && argv[0] !== "remote-server") return null;
 
-	try {
-		const entry = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
-		candidates.push(join(dirname(entry), "bundle", "cli.js"));
-	} catch {
-		/* fall through to the node_modules walk below */
+	const flags = {};
+	const words = [];
+	const rest = argv.slice(1);
+	for (let i = 0; i < rest.length; i += 1) {
+		const arg = rest[i];
+		if (arg.startsWith("--")) {
+			const eq = arg.indexOf("=");
+			if (eq > 0) {
+				flags[arg.slice(2, eq)] = arg.slice(eq + 1);
+			} else if (rest[i + 1] && !rest[i + 1].startsWith("-")) {
+				flags[arg.slice(2)] = rest[i + 1];
+				i += 1;
+			} else {
+				flags[arg.slice(2)] = true;
+			}
+		} else {
+			words.push(arg);
+		}
+	}
+	return { command: argv[0], subcommand: words[0] ?? null, flags };
+}
+
+async function runRemoteCommand({ command, subcommand, flags }) {
+	if (flags.help || flags.h || (command === "remote" && !subcommand && flags.server === undefined && false)) {
+		process.stdout.write(REMOTE_HELP);
+		return;
 	}
 
-	// Walk up from this file in case resolution was blocked (odd global layouts,
-	// pnpm-style stores, a bundled single-file install).
-	let dir = here;
-	for (let depth = 0; depth < 8; depth += 1) {
-		candidates.push(
-			join(dir, "node_modules", "@earendil-works", "pi-coding-agent", "dist", "bundle", "cli.js"),
-		);
-		const parent = dirname(dir);
-		if (parent === dir) break;
-		dir = parent;
+	if (command === "remote-server") {
+		await runRemoteServer({
+			port: flags.port ? Number(flags.port) : undefined,
+			host: flags.host,
+		});
+		return;
 	}
 
-	return candidates.find((candidate) => existsSync(candidate)) ?? null;
+	switch (subcommand) {
+		case "help":
+			process.stdout.write(REMOTE_HELP);
+			return;
+		case "status":
+			await remoteStatus();
+			return;
+		case "stop":
+			await remoteStop();
+			return;
+		case "rotate":
+			await rotateRemote();
+			return;
+		case null:
+			await runRemote({
+				cwd: process.cwd(),
+				serverUrl: flags.server,
+				enrollKey: flags.key,
+				resume: Boolean(flags.resume),
+			});
+			return;
+		default:
+			fail(`unknown remote subcommand: ${subcommand}\nRun \`learningcode remote help\`.`);
+	}
 }
 
 /** Non-fatal reachability probe so students get a useful message, not a stack trace. */
@@ -202,6 +277,15 @@ async function checkEndpoint(baseUrl, token) {
 
 async function main() {
 	const argv = process.argv.slice(2);
+
+	// Remote runs before the launcher's own flag parsing: it has its own
+	// grammar, and everything it does happens instead of an interactive session.
+	const remoteCommand = parseRemoteCommand(argv);
+	if (remoteCommand) {
+		await runRemoteCommand(remoteCommand);
+		return;
+	}
+
 	const { own, toPi, explicitToken, baseUrl } = parseArgs(argv);
 
 	if (own.help) {
@@ -235,11 +319,8 @@ async function main() {
 	await ensureQuietStartup(dir);
 
 	// `--login` forces a fresh paste even when a token is already cached.
-	const forced = [];
 	const requestedModel = readModel(toPi);
 	const effectiveModel = requestedModel ?? `${PROVIDER_ID}/${MODEL_ID}`;
-	if (!requestedModel) forced.push("--model", effectiveModel);
-
 	// Default to the TLC theme without overriding an explicit CLI choice.
 	// LEARNINGCODE_THEME flows through preferredTheme(), so it becomes the
 	// forced value rather than suppressing it. NB: Pi's --theme loads a theme
@@ -254,21 +335,18 @@ async function main() {
 			arg === "--use-theme" ||
 			arg.startsWith("--use-theme="),
 	);
-	if (!userPickedTheme) {
-		forced.push("--use-theme", preferredTheme());
-	}
 
 	// Spark enforces one active generation per student, so subagents and parallel
 	// tool calls would only earn 429s. Pi is serial by default; skills and rules
 	// are pure prompt-token spend against a 32K ceiling, so they stay off.
-	forced.push("--no-skills");
-	forced.push("--extension", join(here, "..", "extensions", "spark-quota.ts"));
-	forced.push("--extension", join(here, "..", "extensions", "footer.ts"));
-	forced.push("--extension", join(here, "..", "extensions", "banner.ts"));
-	forced.push("--extension", join(here, "..", "extensions", "orange-cat.ts"));
-	if (process.env.LEARNINGCODE_PI_FLAGS) {
-		forced.push(...process.env.LEARNINGCODE_PI_FLAGS.split(/\s+/).filter(Boolean));
-	}
+	// The model, theme, skills and extension flags are shared with
+	// `learningcode remote` through lib/pi.mjs, so a remote session cannot drift
+	// from an interactive one.
+	const forced = forcedPiArgs({
+		model: effectiveModel && !requestedModel ? effectiveModel : undefined,
+		theme: userPickedTheme ? null : preferredTheme(),
+		extraFlags: extraPiFlags(),
+	});
 
 	// Everything Spark-specific is skipped when another provider is selected, so
 	// `learningcode --model opencode-go/...` keeps working while Spark or your RunPod
@@ -357,11 +435,9 @@ async function main() {
 		stdio: "inherit",
 		env: {
 			...childEnv,
-			[PI_AGENT_DIR_ENV]: dir,
-			SPARK_BASE_URL: sparkBaseUrl(),
-			// Unset rather than empty when not on Spark: Pi treats an empty key as
-			// configured for some providers, which would shadow the Go credential.
-			...(token ? { [TOKEN_ENV]: token } : {}),
+			// Shared with `learningcode remote`: the agent dir and the Spark
+			// token travel the same way whichever mode starts the agent.
+			...agentEnvironment({ dir, token }),
 		},
 	});
 
