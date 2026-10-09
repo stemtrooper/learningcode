@@ -487,11 +487,11 @@ test("both shipped themes satisfy Pi's colour schema", async () => {
     }
   }
 
-  // The brand cyan, sampled from the logo pixels rather than eyeballed.
+  // The accent matches the phone page, so the terminal and the phone agree.
   const dark = JSON.parse(await readFile(new URL("../assets/themes/tlc-dark.json", import.meta.url), "utf-8"));
   const light = JSON.parse(await readFile(new URL("../assets/themes/tlc-light.json", import.meta.url), "utf-8"));
-  assert.equal(dark.colors.accent, "#29c8f2", "cyan from the black-background logo");
-  assert.equal(light.colors.accent, "#0dacd6", "the darker cyan for light backgrounds");
+  assert.equal(dark.vars.accent, "#0a84ff", "the phone page accent on black");
+  assert.equal(light.vars.accent, "#007aff", "the phone page accent on light backgrounds");
 });
 
 test("unlimited and no-daily-cap accounts are not rendered as zero allowance", async () => {

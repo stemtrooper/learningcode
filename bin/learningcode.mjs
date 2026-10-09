@@ -331,13 +331,15 @@ async function main() {
 
 	const dir = agentDir();
 
-	// Once per upgrade, and only for an interactive session: print and JSON
-	// runs are read by scripts, and a notice on their stdout would corrupt them.
+	// Once per upgrade, and only for an interactive session. The notice is handed
+	// to the TUI (extensions/whats-new.ts) so it lands in the chat after the
+	// banner, where it can be read, instead of being printed before Pi draws over it.
 	const interactive = process.stdout.isTTY && !toPi.includes("-p") && !toPi.includes("--print") && !toPi.includes("--mode");
+	let whatsNew = "";
 	if (interactive) {
 		const notice = await pendingNotice(version, dir);
 		if (notice) {
-			process.stdout.write(formatNotice(notice) + "\n");
+			whatsNew = formatNotice(notice);
 			await markNoticeShown(version, dir);
 		}
 	}
@@ -478,6 +480,7 @@ async function main() {
 			// Shared with `learningcode remote`: the agent dir and the Spark
 			// token travel the same way whichever mode starts the agent.
 			...agentEnvironment({ dir, token }),
+			LEARNINGCODE_NOTICE: whatsNew,
 		},
 	});
 
