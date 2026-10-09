@@ -138,6 +138,77 @@ Prefer `nodejs-lts` (24.x) over `nodejs` (26.x).
 
 ---
 
+## LearningCode Remote
+
+Continue and steer a session from your phone. The agent keeps running on your
+computer, with its filesystem, shell, Git and USB devices; the phone is a remote
+for it.
+
+```bash
+learningcode remote
+```
+
+It prints a link to open on your phone, plus a pairing code. Nothing is exposed
+inbound: your computer opens the connection to the relay server, so the phone
+can only reach a session that your computer has already announced.
+
+```text
+learningcode remote is live: arduino-robot
+
+  Open on your phone: https://…/#/s/8fK2…?t=9Qx…
+  Pairing code:       4FQ7 2KDM
+
+  Ctrl+C to stop.
+```
+
+### Using it
+
+The phone shows your project, whether the computer is online, the conversation
+so far, and a compose box. Messages arrive as they stream, tool runs appear as
+one line each (`Running: arduino-cli compile …` / `✓ done`), and closing the
+browser loses nothing — reconnect and the same conversation is there.
+
+```bash
+learningcode remote status    # what is running, and from which directory
+learningcode remote rotate    # invalidate every phone link at once
+learningcode remote stop      # stop the session
+```
+
+### Running your own relay
+
+The relay server is included, so a class or a lab can run its own. It keeps the
+session registry and nothing else: it cannot run a command on anyone's machine,
+and it never sees a file from a student's computer.
+
+```bash
+learningcode remote-server          # prints the URLs and the enrolment key
+```
+
+Then, on the computer:
+
+```bash
+LEARNINGCODE_REMOTE_SERVER=ws://192.168.1.10:8787/agent \
+LEARNINGCODE_REMOTE_KEY=<the key the server printed> \
+learningcode remote
+```
+
+Bind it beyond loopback only on a trusted network, or behind TLS — the default
+bind is `127.0.0.1` deliberately.
+
+### How it is put together
+
+`learningcode remote` runs the same Pi agent as an interactive session, in RPC
+mode: a headless child process that speaks JSON lines on stdin/stdout. The
+bridge carries phone messages down that pipe and streams agent events back up
+through the relay, after passing them through a sanitiser that allowlists fields
+and redacts anything shaped like a token. Sessions are Pi's own session files,
+so `learningcode -c` in the terminal and the phone show the same history.
+
+The full design, including the protocol and the security model, is in
+[docs/remote.md](docs/remote.md).
+
+---
+
 ## First run
 
 ```bash
