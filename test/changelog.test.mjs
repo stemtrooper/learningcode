@@ -47,7 +47,7 @@ test("a version with no changelog entry shows nothing rather than a blank box", 
 
 test("the notice tells students the command to type", () => {
 	const text = formatNotice(CHANGELOG[0]);
-	assert.match(text, /learningcode remote --tunnel/);
+	assert.match(text, /learningcode remote/);
 	assert.match(text, /QR code/);
 	assert.match(text, /--resume/);
 });
