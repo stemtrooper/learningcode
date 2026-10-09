@@ -16,14 +16,15 @@ import { agentDir } from "../lib/config.mjs";
  * read it from the environment the launcher sets rather than asking again.
  */
 
-const BASE_URL = (process.env.SPARK_BASE_URL || "https://spark.learning.com.my/v1").replace(/\/+$/, "");
-const TOKEN = process.env.SPARK_API_KEY || "";
+const baseUrl = () => (process.env.SPARK_BASE_URL || "https://spark.learning.com.my/v1").replace(/\/+$/, "");
+const token = () => process.env.SPARK_API_KEY || "";
 
 async function call(path: string): Promise<{ ok: true; body: unknown } | { ok: false; error: string; status?: number }> {
-	if (!TOKEN) return { ok: false, error: "no Spark token in the environment" };
+	const t = token();
+	if (!t) return { ok: false, error: "no Spark token in the environment" };
 	try {
-		const response = await fetch(`${BASE_URL}${path}`, {
-			headers: { Authorization: `Bearer ${TOKEN}` },
+		const response = await fetch(`${baseUrl()}${path}`, {
+			headers: { Authorization: `Bearer ${t}` },
 		});
 		if (!response.ok) return { ok: false, error: `HTTP ${response.status}`, status: response.status };
 		return { ok: true, body: await response.json() };
@@ -147,7 +148,7 @@ export default function sparkQuota(pi: ExtensionAPI) {
 		handler: async (_args, ctx) => {
 			const prefix = await cachedTokenPrefix(agentDir()).catch(() => undefined);
 
-			if (!TOKEN) {
+			if (!token()) {
 				ctx.ui.notify(
 					"No TLC-Spark token loaded. Exit and run:  learningcode --login",
 					"warning",
@@ -185,7 +186,7 @@ export default function sparkQuota(pi: ExtensionAPI) {
 			}
 
 			ctx.ui.notify(
-				`Cannot reach Spark at ${BASE_URL} (${result.error}). Check your network.`,
+				`Cannot reach Spark at ${baseUrl()} (${result.error}). Check your network.`,
 				"warning",
 			);
 		},

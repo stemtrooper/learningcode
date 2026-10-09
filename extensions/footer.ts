@@ -18,8 +18,8 @@ type ComponentLike = { render(width: number): string[] };
 /** Just enough of the TUI to ask for a repaint after the quota changes. */
 type TuiLike = { requestRender?(): void; invalidate?(): void };
 
-const BASE_URL = (process.env.SPARK_BASE_URL || "https://spark.learning.com.my/v1").replace(/\/+$/, "");
-const TOKEN = process.env.SPARK_API_KEY || "";
+const baseUrl = () => (process.env.SPARK_BASE_URL || "https://spark.learning.com.my/v1").replace(/\/+$/, "");
+const token = () => process.env.SPARK_API_KEY || "";
 
 /** Two minutes. Enough to stay current, rarely enough to be invisible. */
 const POLL_MS = 120_000;
@@ -77,10 +77,11 @@ function format(quota: Quota): string[] {
 }
 
 async function fetchQuota(): Promise<Quota | null> {
-  if (!TOKEN) return null;
+  const t = token();
+  if (!t) return null;
   try {
-    const response = await fetch(`${BASE_URL}/me/quota`, {
-      headers: { Authorization: `Bearer ${TOKEN}` },
+    const response = await fetch(`${baseUrl()}/me/quota`, {
+      headers: { Authorization: `Bearer ${t}` },
     });
     if (!response.ok) return null;
     return (await response.json()) as Quota;
@@ -149,7 +150,7 @@ export default function sparkFooter(pi: ExtensionAPI) {
 
           // Nothing to say off Spark, or no token: say so rather than draw a bar
           // full of empties that reads as "you have spent nothing".
-          if (!TOKEN) {
+          if (!token()) {
             return [theme.fg("dim", "  not on Spark — /login, or use --model opencode-go/…"), hints];
           }
           if (!quota) return [theme.fg("dim", "  Spark quota unavailable"), hints];

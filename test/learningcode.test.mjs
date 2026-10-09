@@ -14,6 +14,31 @@ const run = promisify(execFile);
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const launcher = join(repoRoot, "bin", "learningcode.mjs");
 
+/**
+ * Tests that exercise the "Spark is unreachable / no token" paths must not see
+ * the developer's real credentials: extensions read SPARK_API_KEY from the
+ * environment, so a set key (plus a reachable network) turns the failure path
+ * into a live success and the assertions see "info" instead of "warning".
+ * withIsolatedSparkEnv clears both vars and stubs fetch to refuse, restoring
+ * everything afterwards.
+ */
+async function withIsolatedSparkEnv(fn) {
+  const keys = ["SPARK_API_KEY", "SPARK_BASE_URL"];
+  const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+  const savedFetch = globalThis.fetch;
+  for (const k of keys) delete process.env[k];
+  globalThis.fetch = () => Promise.reject(new Error("unreachable (test stub)"));
+  try {
+    return await fn();
+  } finally {
+    for (const k of keys) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+    globalThis.fetch = savedFetch;
+  }
+}
+
 const scratch = () => mkdtemp(join(tmpdir(), "learningcode-"));
 
 test("seeds TLC-Spark with the compat flags Spark requires", async () => {
@@ -91,6 +116,7 @@ test("provider definition tracks the env override", () => {
 });
 
 test("the Spark extension registers its commands and a session_start hook", async () => {
+  await withIsolatedSparkEnv(async () => {
   const jiti = createJiti(import.meta.url);
   const mod = await jiti.import("../extensions/spark-quota.ts");
   assert.equal(typeof mod.default, "function", "extension must default-export a factory");
@@ -119,6 +145,7 @@ test("the Spark extension registers its commands and a session_start hook", asyn
     assert.equal(notices.length, 1, name + " should notify exactly once");
     assert.equal(notices[0][1], "warning", name + " should warn when Spark is unreachable");
   }
+  });
 });
 
 test("the Spark extension never accepts or echoes a pasted token", async () => {
@@ -139,6 +166,7 @@ test("the Spark extension never accepts or echoes a pasted token", async () => {
 });
 
 test("/spark-login explains what to do when no token is loaded", async () => {
+  await withIsolatedSparkEnv(async () => {
   const jiti = createJiti(import.meta.url);
   const mod = await jiti.import("../extensions/spark-quota.ts");
 
@@ -155,6 +183,7 @@ test("/spark-login explains what to do when no token is loaded", async () => {
   assert.equal(notices.length, 1);
   assert.equal(notices[0][1], "warning");
   assert.match(notices[0][0], /learningcode --login/, "points at the masked login command");
+  });
 });
 
 /** Run the launcher with a clean environment, returning stdout+stderr. */
@@ -508,6 +537,7 @@ test("the footer meter still behaves for capped accounts", async () => {
   assert.ok(numbers.includes("8k/10k today"));
 });
 test("the footer extension installs a footer and stops polling on shutdown", async () => {
+  await withIsolatedSparkEnv(async () => {
   const jiti = createJiti(import.meta.url);
   const mod = await jiti.import("../extensions/footer.ts");
 
@@ -533,6 +563,7 @@ test("the footer extension installs a footer and stops polling on shutdown", asy
   assert.match(line, /esc.*interrupt/);
 
   await handlers.get("session_shutdown")();
+  });
 });
 
 test("the footer swaps its hint line for a working indicator while the agent runs", async () => {
@@ -661,6 +692,11 @@ test("the banner brands the terminal tab on every title-rewriting event", async 
 });
 
 test("the Spark token reaches Pi by both routes, so they cannot drift", async () => {
+  // The developer's own key must not leak in: the assertion compares the stored
+  // credential against the environment fallback.
+  const savedKey = process.env.SPARK_API_KEY;
+  delete process.env.SPARK_API_KEY;
+  try {
   /**
    * The regression this locks down: Pi prefers a stored credential in auth.json over
    * the "$SPARK_API_KEY" the provider config names. Leaving the token only in the
@@ -684,6 +720,10 @@ test("the Spark token reaches Pi by both routes, so they cannot drift", async ()
     process.env.SPARK_API_KEY ?? token,
     "stored credential and environment agree",
   );
+  } finally {
+    if (savedKey === undefined) delete process.env.SPARK_API_KEY;
+    else process.env.SPARK_API_KEY = savedKey;
+  }
 });
 
 test("only a spark_live_ value is treated as a cached Spark token", async () => {
