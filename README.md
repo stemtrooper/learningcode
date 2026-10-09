@@ -147,7 +147,7 @@ for it.
 **Start it, in your project folder:**
 
 ```bash
-learningcode remote --tunnel
+learningcode remote
 ```
 
 The first run downloads cloudflared once, into `~/.learningcode/bin`. After that
@@ -155,13 +155,13 @@ it starts straight away and prints a QR code. Point your phone camera at it and
 open the page. The text link is printed under the code in case the camera
 struggles.
 
-With `--tunnel`, the phone can reach your session from any network. Without it,
-the link works on your own wifi only.
+The phone can reach your session from any network. To keep it on your own wifi
+only, use `learningcode remote --no-tunnel`.
 
 **Continue an existing conversation** (quit the interactive session first):
 
 ```bash
-learningcode remote --tunnel --resume
+learningcode remote --resume
 ```
 
 `--resume` continues this project's last conversation. Without it, the phone

@@ -37,7 +37,7 @@ test("a session link without a token parses to an empty token, so the server ref
 
 test("the header names the product in plain text, not block art", () => {
 	const html = remoteWebUi();
-	assert.match(html, /<div class="logo"[^>]*>LEARNINGCODE<\/div>/);
+	assert.match(html, /<span class="logo">LEARNINGCODE REMOTE<\/span>/);
 	assert.doesNotMatch(html, /██/, "no block-character art in the header");
 });
 
@@ -56,7 +56,7 @@ test("the empty state is a narrow centred paragraph, not full-width type", () =>
 	// width in ragged columns. The empty paragraph must cap its own measure
 	// and centre, whatever the viewport does.
 	const html = remoteWebUi();
-	assert.match(html, /\.empty\s*\{[^}]*max-width:\s*34ch/);
+	assert.match(html, /\.empty\s*\{[^}]*max-width:\s*30ch/);
 	assert.match(html, /\.empty\s*\{[^}]*text-align:\s*center/);
 	assert.match(html, /text-size-adjust:\s*100%/);
 });
@@ -68,10 +68,10 @@ test("the header keeps the pc folder name, even when it repeats the brand", () =
 	assert.match(html, /projectEl.textContent = name;/);
 });
 
-test("agent bubbles carry a tiny marker instead of a name label", () => {
-	// Left alignment already says who is talking; the label is just "$".
+test("speakers are labelled You and Agent, with no bubbles", () => {
 	const html = remoteWebUi();
-	assert.match(html, /who\.textContent = role === "you" \? "you" : "\$";/);
+	assert.match(html, /who\.textContent = role === "you" \? "You" : "Agent";/);
+	assert.doesNotMatch(html, /\.text\s*\{[^}]*background:\s*var\(--panel\)/);
 })
 
 test("the model button remembers its label across reloads", () => {

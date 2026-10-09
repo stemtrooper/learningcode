@@ -158,8 +158,10 @@ function extraPiFlags() {
 const REMOTE_HELP = `learningcode remote - control this session from your phone
 
 Usage
-  learningcode remote --serve        run everything here: relay, agent, phone link
-  learningcode remote [--resume]     connect this directory to a relay server
+  learningcode remote [--resume]     run everything here and open the phone link
+                                     through Cloudflare (the default)
+  learningcode remote --server <url> --key <key>
+                                     connect this directory to a hosted relay
   learningcode remote status         what is running, and where
   learningcode remote stop           stop the remote session
   learningcode remote rotate         invalidate every phone link, mint a new one
@@ -169,10 +171,10 @@ Options
   --serve             start the relay inside this process, so there is no key
                       to copy and no second terminal. The phone link it prints
                       already points at this computer.
-  --tunnel            open the relay to the internet through Cloudflare, so the
-                      phone works anywhere (needs cloudflared, once:
-                      winget install --id Cloudflare.cloudflared).
-                      Implies --serve.
+  --no-tunnel         keep the relay on your own wifi only (no Cloudflare)
+  --tunnel            same as the default; kept so old instructions still work.
+                      Needs cloudflared (winget install --id Cloudflare.cloudflared),
+                      downloaded once on first run.
   --port <n>          relay port (default 8787)
   --resume            continue this project's most recent conversation instead
                       of starting a new one
@@ -252,18 +254,30 @@ async function runRemoteCommand({ command, subcommand, flags }) {
 		case "rotate":
 			await rotateRemote();
 			return;
-		case null:
+		case null: {
+			// With no relay named anywhere, run the relay here and open it through
+			// Cloudflare: one command, phone works from any network. A named relay
+			// (--server/--key or the env vars) means the hosted path instead.
+			const hostedRelay = Boolean(
+				flags.server !== undefined ||
+					flags.key !== undefined ||
+					process.env.LEARNINGCODE_REMOTE_SERVER ||
+					process.env.LEARNINGCODE_REMOTE_KEY,
+			);
+			const local = !hostedRelay && !flags.serve;
+			const tunnel = Boolean(flags.tunnel) || (local && flags["no-tunnel"] !== true);
 			await runRemote({
 				cwd: process.cwd(),
 				serverUrl: flags.server,
 				enrollKey: flags.key,
 				resume: Boolean(flags.resume),
-				serve: Boolean(flags.serve),
-				tunnel: Boolean(flags.tunnel),
+				serve: Boolean(flags.serve) || local,
+				tunnel,
 				port: flags.port ? Number(flags.port) : undefined,
 				host: flags.host,
 			});
 			return;
+		}
 		default:
 			fail(`unknown remote subcommand: ${subcommand}\nRun \`learningcode remote help\`.`);
 	}
