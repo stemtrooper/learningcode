@@ -5,6 +5,8 @@ node_modules/
 .npmrc
 .env
 .env.*
+# The remote server's session registry, written next to where you run it.
+remote-sessions.json
 # Screenshots pasted in for review, not part of the package.
 screenshots/
 .DS_Store
