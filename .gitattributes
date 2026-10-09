@@ -1,3 +1,8 @@
+# Keep text files in LF in the repository, whatever the checkout platform.
+# A Windows checkout with core.autocrlf=true otherwise prints a CRLF warning for
+# every file on commit. Binary files are detected by git and left alone.
+* text=auto eol=lf
+
 # Shell scripts must keep LF endings everywhere. A Windows checkout with CRLF
 # fails with "bad interpreter: no such file or directory", which is invisible to
 # the developer who wrote it and fatal for every student who curls it.

@@ -14,6 +14,7 @@ import {
 	sparkBaseUrl,
 } from "../lib/config.mjs";
 import { GO_PROVIDER, loggedInProviders, saveProviderKey, visibleModelPatterns } from "../lib/auth.mjs";
+import { doctorReport } from "../lib/doctor.mjs";
 import {
 	TOKENHARBOR_PROVIDER,
 	ensureTokenHarborProvider,
@@ -332,6 +333,16 @@ async function main() {
 	const remoteCommand = parseRemoteCommand(argv);
 	if (remoteCommand) {
 		await runRemoteCommand(remoteCommand);
+		return;
+	}
+
+	// learningcode doctor: a read-only health check. Never prints a key.
+	if (argv[0] === "doctor") {
+		const checkSpark = async (url) => {
+			const token = (await resolveToken(agentDir())).token;
+			return checkEndpoint(url, token);
+		};
+		process.stdout.write(await doctorReport({ checkSpark }));
 		return;
 	}
 
