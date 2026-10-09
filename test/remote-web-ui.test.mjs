@@ -35,11 +35,10 @@ test("a session link without a token parses to an empty token, so the server ref
 	assert.deepEqual(parse("#/s/abc"), { sessionId: "abc", token: "" });
 });
 
-test("the logo scales with the screen, so the 47-column banner fits every phone", () => {
-	// The banner is 47 columns, sized in vw so it stays on one line. The browser
-	// check measured it fitting at 390, 360 and 320 CSS pixels.
+test("the header names the product in plain text, not block art", () => {
 	const html = remoteWebUi();
-	assert.match(html, /font-size: min\(8px, 2\.1vw\)/);
+	assert.match(html, /<div class="logo"[^>]*>LEARNINGCODE<\/div>/);
+	assert.doesNotMatch(html, /██/, "no block-character art in the header");
 });
 
 test("the page keeps its text plain: no transcript text is ever written as HTML", () => {
