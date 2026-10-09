@@ -19,11 +19,13 @@
 	"scripts": {
 		"start": "node ./bin/learningcode.mjs",
 		"test": "node --test \"test/**/*.test.mjs\"",
+		"test:e2e": "node ./scripts/test-e2e.mjs",
 		"preview": "node ./scripts/preview.mjs"
 	},
 	"dependencies": {
 		"@earendil-works/pi-coding-agent": "1.1.0",
-		"@earendil-works/pi-tui": "1.1.0"
+		"@earendil-works/pi-tui": "1.1.0",
+		"ws": "^8.18.0"
 	},
 	"devDependencies": {
 		"jiti": "2.7.0"
