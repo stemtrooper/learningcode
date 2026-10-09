@@ -61,13 +61,18 @@ test("the empty state is a narrow centred paragraph, not full-width type", () =>
 	assert.match(html, /text-size-adjust:\s*100%/);
 });
 
-test("a project folder named learningcode does not repeat the brand", () => {
-	// The header already says LEARNINGCODE; meta.name is often the checkout
-	// folder, i.e. the same word again. The page must fall back to "remote".
+test("the header keeps the pc folder name, even when it repeats the brand", () => {
+	// The word next to the model picker is the folder on the computer, so it
+	// stays as-is: it tells the student which folder they are driving.
 	const html = remoteWebUi();
-	assert.match(html, /learningcode.*remote|remote.*learningcode/i);
-	assert.match(html, /\^learningcode\$/i);
+	assert.match(html, /projectEl.textContent = name;/);
 });
+
+test("agent bubbles carry a tiny marker instead of a name label", () => {
+	// Left alignment already says who is talking; the label is just "$".
+	const html = remoteWebUi();
+	assert.match(html, /who\.textContent = role === "you" \? "you" : "\$";/);
+})
 
 test("the model button remembers its label across reloads", () => {
 	// Until the first models frame arrives over a slow tunnel, "choose model"
