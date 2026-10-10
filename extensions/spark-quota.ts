@@ -1,6 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { cachedTokenPrefix } from "../lib/token.mjs";
 import { agentDir } from "../lib/config.mjs";
+import { cachedTokenPrefix } from "../lib/token.mjs";
+import { quotaErrorLine, seatsErrorLine, startupFailureLine, queuePositionLine } from "../lib/failure.mjs";
 
 /**
  * Spark-aware status for the learningcode client.
@@ -110,7 +111,7 @@ export default function sparkQuota(pi: ExtensionAPI) {
 		handler: async (_args, ctx) => {
 			const result = await call("/me/quota");
 			ctx.ui.notify(
-				result.ok ? quotaLine(result.body as QuotaBody) : `quota unavailable: ${result.error}`,
+				result.ok ? quotaLine(result.body as QuotaBody) : quotaErrorLine(result, baseUrl()),
 				result.ok ? "info" : "warning",
 			);
 		},
@@ -121,7 +122,7 @@ export default function sparkQuota(pi: ExtensionAPI) {
 		handler: async (_args, ctx) => {
 			const result = await call("/queue");
 			ctx.ui.notify(
-				result.ok ? queueLine(result.body) : `seat info unavailable: ${result.error}`,
+				result.ok ? (queuePositionLine(result.body) ?? queueLine(result.body)) : seatsErrorLine(result, baseUrl()),
 				result.ok ? "info" : "warning",
 			);
 		},
@@ -197,7 +198,7 @@ export default function sparkQuota(pi: ExtensionAPI) {
 	// latency to the thing students are waiting on.
 	pi.on("session_start", async (_event, ctx) => {
 		const result = await call("/me/quota");
-		if (!result.ok) return;
+		if (!result.ok) { const startupFailure = startupFailureLine(result, baseUrl()); if (startupFailure) ctx.ui.notify(startupFailure, "warning"); return; }
 		const body = result.body as Record<string, unknown>;
 
 		if (body.aiEnabled === false) {

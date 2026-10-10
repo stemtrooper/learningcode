@@ -442,6 +442,7 @@ often, and a student's install must not change underneath them mid-term.
 
 ## Changelog
 
+* **0.7.2** — failure UX: quota/seats/startup errors say what died and how to fix it, seat queue position without invented ETAs, `doctor --fix` clears a rejected token cache.
 * **0.7.1** — footer shows session spend (`sess 3k ≈$0.03`, catalog-priced)
   and compacts for narrow screens (short model id, `quota n/a`, trimmed
   hints); scripted first-run tour with `/intro` replay and `--no-intro`.

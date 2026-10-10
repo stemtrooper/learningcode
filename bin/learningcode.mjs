@@ -23,10 +23,18 @@ import {
 import { ensureSparkProvider, modelsPath, retargetProvider } from "../lib/models.mjs";
 import { ensureQuietStartup, ensureThinkingCycleKey, persistedModelPrefs, seedModelPrefs } from "../lib/settings.mjs";
 import { ensureThemes, preferredTheme } from "../lib/themes.mjs";
-import { hasToken, looksLikeToken, promptSecret, resolveToken, writeCachedToken } from "../lib/token.mjs";
+import {
+	hasToken,
+	looksLikeToken,
+	promptSecret,
+	readCachedToken,
+	resolveToken,
+	writeCachedToken,
+} from "../lib/token.mjs";
 import { agentEnvironment, forcedPiArgs, resolvePiEntry } from "../lib/pi.mjs";
 import { remoteStatus, remoteStop, rotateRemote, runRemote, runRemoteServer } from "../lib/remote/index.mjs";
 import { formatNotice, markNoticeShown, pendingNotice } from "../lib/changelog.mjs";
+import { fixStaleToken } from "../lib/failure.mjs";
 import { AUTO_INTRO_ENV, NO_INTRO_ENV, hasSeenIntro, shouldAutoIntro } from "../lib/intro.mjs";
 
 const require = createRequire(import.meta.url);
@@ -334,8 +342,8 @@ async function checkEndpoint(baseUrl, token) {
 			signal: controller.signal,
 		});
 		if (response.ok) return { ok: true };
-		if (response.status === 401) return { ok: false, reason: "token rejected (401)" };
-		return { ok: false, reason: `HTTP ${response.status}` };
+		if (response.status === 401 || response.status === 403) return { ok: false, status: response.status, reason: "token rejected" };
+		return { ok: false, status: response.status, reason: `HTTP ${response.status}` };
 	} catch (error) {
 		const reason = error?.name === "AbortError" ? "timed out after 5s" : error?.message;
 		return { ok: false, reason };
@@ -355,14 +363,13 @@ async function main() {
 		return;
 	}
 
-	// learningcode doctor: a read-only health check. Never prints a key.
+	// learningcode doctor: a health check (read-only) with an optional --fix that clears a rejected token cache. Never prints a key.
 	if (argv[0] === "doctor") {
 		const checkSpark = async (url) => {
 			const token = (await resolveToken(agentDir())).token;
 			return checkEndpoint(url, token);
 		};
-		process.stdout.write(await doctorReport({ checkSpark }));
-		return;
+process.stdout.write(await doctorReport({ checkSpark })); if (argv[1] === "--fix") { const dir = agentDir(); const fixed = await fixStaleToken(dir, (t) => checkEndpoint(sparkBaseUrl(), t), () => readCachedToken(dir)); process.stdout.write((fixed ?? "Nothing to fix - doctor is clean.") + "\n"); } return;
 	}
 
 	const { own, toPi, explicitToken, baseUrl } = parseArgs(argv);
