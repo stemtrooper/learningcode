@@ -596,6 +596,78 @@ test("the footer swaps its hint line for a working indicator while the agent run
   await handlers.get("session_shutdown")();
 });
 
+test("the footer totals session spend and prices it from the catalog", async () => {
+  const jiti = createJiti(import.meta.url);
+  const mod = await jiti.import("../extensions/footer.ts");
+  const { sessionSpend, shortModelId, spendText } = mod._internals;
+
+  const entries = [
+    { type: "message" },
+    { type: "usage", kind: "llm", provider: "p", model: "m", usage: { input: 1000, output: 500, cacheRead: 200 } },
+    { type: "usage", kind: "llm", provider: "p", model: "unpriced", usage: { input: 100, output: 0 } },
+  ];
+  const find = (_provider, id) =>
+    id === "m" ? { cost: { input: 1, output: 4, cacheRead: 0.1 } } : undefined;
+  const spend = sessionSpend(entries, find);
+  assert.equal(spend.tokens, 1600, "input + output across usage entries");
+  // (800 x $1 + 200 x $0.10 + 500 x $4) / 1M.
+  assert.ok(Math.abs(spend.dollars - 0.00282) < 1e-9);
+  assert.equal(sessionSpend(entries).dollars, null, "tokens alone are never a price");
+  assert.equal(sessionSpend(entries).tokens, 1600);
+
+  assert.equal(spendText({ tokens: 0, dollars: null }), "", "nothing spent, nothing shown");
+  assert.equal(spendText({ tokens: 1600, dollars: null }), "sess 2k");
+  assert.equal(spendText({ tokens: 1600, dollars: 0.00282 }), "sess 2k ≈$0.00");
+
+  assert.equal(shortModelId("tlc-spark/TLC-Spark"), "TLC-Spark");
+  assert.equal(shortModelId("opencode-go/muse-spark-1.3-contributor"), "muse-spark-1.3-…");
+});
+
+test("narrow footers stay short: model cut, quota n/a, spend dropped", async () => {
+  await withIsolatedSparkEnv(async () => {
+    process.env.SPARK_API_KEY = "spark_live_test";
+    const jiti = createJiti(import.meta.url);
+    const mod = await jiti.import("../extensions/footer.ts");
+
+    const handlers = new Map();
+    let footerFactory;
+    const ctx = {
+      hasUI: true,
+      mode: "tui",
+      model: { provider: "opencode-go", id: "muse-spark-1.3-contributor" },
+      sessionManager: {
+        getEntries: () => [
+          { type: "usage", kind: "llm", provider: "opencode-go", model: "muse-spark-1.3-contributor", usage: { input: 2000, output: 500 } },
+        ],
+      },
+      modelRegistry: { find: () => ({ cost: { input: 1, output: 2, cacheRead: 0.5 } }) },
+      ui: { setFooter: (f) => (footerFactory = f) },
+    };
+
+    mod.default({ on: (event, fn) => handlers.set(event, fn) });
+    await handlers.get("session_start")({}, ctx);
+    const theme = { fg: (_t, text) => text };
+    const noStatus = { getExtensionStatuses: () => new Map() };
+
+    const wide = footerFactory({}, theme, noStatus).render(100).join("");
+    assert.match(wide, /muse-spark-1\.3-contributor/, "full id when wide");
+    assert.match(wide, /sess 3k ≈\$/);
+    assert.match(wide, /quota n\/a/, "short fetch-failure label");
+    assert.doesNotMatch(wide, /Spark quota unavailable/);
+
+    const narrow = footerFactory({}, theme, noStatus).render(40).join("");
+    assert.doesNotMatch(narrow, /muse-spark/, "no model id on a phone width");
+    assert.doesNotMatch(narrow, /sess/, "spend dropped when narrow");
+    assert.match(narrow, /quota n\/a/);
+    assert.match(narrow, /build/);
+
+    const plan = footerFactory({}, theme, { getExtensionStatuses: () => new Map([["plan-mode", "plan 1/3"]]) }).render(40).join("");
+    assert.match(plan, /PLAN 1\/3/, "mode counts survive narrowing");
+
+    await handlers.get("session_shutdown")();
+  });
+});
+
 test("the banner survives a theme that rejects non-token colours", async () => {
   const jiti = createJiti(import.meta.url);
   const mod = await jiti.import("../extensions/banner.ts");

@@ -18,6 +18,11 @@ type ComponentLike = { render(width: number): string[] };
 /** Just enough of the TUI to ask for a repaint after the quota changes. */
 type TuiLike = { requestRender?(): void; invalidate?(): void };
 type FooterDataLike = { getExtensionStatuses?: () => ReadonlyMap<string, string> };
+type UsageLike = { input?: unknown; output?: unknown; cacheRead?: unknown };
+type EntryLike = { type?: string; provider?: string; model?: string; usage?: UsageLike };
+type CostLike = { input?: unknown; output?: unknown; cacheRead?: unknown };
+type RegistryLike = { find?: (provider: string, modelId: string) => { cost?: CostLike } | undefined };
+type SessionManagerLike = { getEntries?: () => EntryLike[] };
 
 const baseUrl = () => (process.env.SPARK_BASE_URL || "https://spark.learning.com.my/v1").replace(/\/+$/, "");
 const token = () => process.env.SPARK_API_KEY || "";
@@ -77,6 +82,53 @@ function format(quota: Quota): string[] {
   ];
 }
 
+/**
+ * Session spend summed over usage entries. Dollars use each entry's own
+ * model catalog price ($/M tokens); cache-read tokens are billed at the
+ * cache rate, the rest of input at the input rate (cacheWrite is a subset
+ * of input, already counted). dollars is null when no entry has numeric
+ * rates — tokens alone must never be mistaken for a price.
+ */
+export function sessionSpend(
+	entries: EntryLike[],
+	findModel?: (provider?: string, model?: string) => { cost?: CostLike } | undefined,
+): { tokens: number; dollars: number | null } {
+	let tokens = 0;
+	let dollars = 0;
+	let priced = false;
+	for (const entry of entries ?? []) {
+		const usage = entry?.usage;
+		if (!usage) continue;
+		const input = num(usage.input);
+		const output = num(usage.output);
+		const read = Math.min(num(usage.cacheRead), input);
+		tokens += input + output;
+		const cost = findModel?.(entry.provider, entry.model)?.cost;
+		const rates = [cost?.input, cost?.output, cost?.cacheRead];
+		if (cost && rates.some((r) => typeof r === "number")) {
+			priced = true;
+			dollars +=
+				((input - read) * num(cost.input) + read * num(cost.cacheRead) + output * num(cost.output)) / 1_000_000;
+		}
+	}
+	return { tokens, dollars: priced ? dollars : null };
+}
+
+/** Short model id for narrow screens: provider prefix dropped, then cut. */
+export function shortModelId(id: string, max = 16): string {
+	const base = id.includes("/") ? (id.split("/").pop() ?? id) : id;
+	return base.length > max ? `${base.slice(0, max - 1)}…` : base;
+}
+
+const thousands = (n: number): string => (n >= 1000 ? `${Math.round(n / 1000)}k` : `${Math.round(n)}`);
+
+/** Session spend segment, or "" before the first turn. Dollars only when priced. */
+export function spendText(spend: { tokens: number; dollars: number | null }): string {
+	if (spend.tokens <= 0) return "";
+	const dollars = spend.dollars == null ? "" : ` ≈$${spend.dollars.toFixed(2)}`;
+	return `sess ${thousands(spend.tokens)}${dollars}`;
+}
+
 async function fetchQuota(): Promise<Quota | null> {
   const t = token();
   if (!t) return null;
@@ -113,6 +165,24 @@ export default function sparkFooter(pi: ExtensionAPI) {
   let working = false;
   let frame = 0;
   let tui: TuiLike | undefined;
+  let spend = { tokens: 0, dollars: null as number | null };
+  let sessionRefs = {} as {
+    model?: { provider?: string; id?: string } | null;
+    sessionManager?: SessionManagerLike;
+    modelRegistry?: RegistryLike;
+  };
+
+  // Usage entries land per LLM call, so recompute on turn end and on poll —
+  // never per render frame (the spinner repaints at 120ms while working).
+  const recomputeSpend = () => {
+    try {
+      const entries = sessionRefs.sessionManager?.getEntries?.() ?? [];
+      const find = sessionRefs.modelRegistry?.find?.bind(sessionRefs.modelRegistry);
+      spend = sessionSpend(entries, find);
+    } catch {
+      /* keep the last known spend rather than blanking mid-session */
+    }
+  };
 
   const repaint = () => tui?.requestRender?.();
 
@@ -138,21 +208,33 @@ export default function sparkFooter(pi: ExtensionAPI) {
 
     const refresh = async () => {
       quota = await fetchQuota();
+      recomputeSpend();
       // Repaint in place. Notifying would be the wrong tool: an empty
       // notification still appends a row to the transcript, and the transcript is
       // what the student is reading.
       tui?.requestRender?.();
     };
 
-    const sessionCtx = ctx as { model?: { provider?: string; id?: string } | null };
+    const sessionCtx = ctx as {
+      model?: { provider?: string; id?: string } | null;
+      sessionManager?: SessionManagerLike;
+      modelRegistry?: RegistryLike;
+    };
+    sessionRefs = sessionCtx;
     ctx.ui.setFooter((footerTui: TuiLike, theme: ThemeLike, footerData?: FooterDataLike) => {
       tui = footerTui;
       return {
         render(width: number): string[] {
+          // Width tiers: narrow (phone) keeps only what answers "can I run
+          // and where am I" — bar, percent, mode. Model, counts and spend
+          // return at 52+; the full model id at 70+.
+          const narrow = width < 52;
           // Pi's stock footer (folder, session, model, context usage) is
           // replaced by setFooter, so the active model must live here or an
           // opencode default shows nowhere.
-          const modelLabel = theme.fg("warning", `  ·  ${activeModelId(sessionCtx)}`);
+          const fullId = activeModelId(sessionCtx);
+          const modelLabel = theme.fg("warning", `  ·  ${width >= 70 ? fullId : shortModelId(fullId)}`);
+          const maybeModel = narrow ? "" : modelLabel;
           // Plan mode sets the `plan-mode` status ("plan" or "plan done/total");
           // Build mode keeps "build done/total" while a checklist is active.
           const planStatus = footerData?.getExtensionStatuses?.().get(STATUS_PLAN_KEY);
@@ -178,21 +260,29 @@ export default function sparkFooter(pi: ExtensionAPI) {
           // Pi has its own status spinner, but the footer is the TLC-owned
           // surface, so the motion lives here where it cannot be restyled
           // away from the brand.
-          const idleHints = theme.fg("dim", "  ctrl+c exit  ·  esc interrupt  ·  ctrl+p models  ·  ctrl+shift+e thinking  ·  ctrl+t fold  ·  shift+tab plan");
+          const idleHints = theme.fg(
+            "dim",
+            narrow
+              ? "  ctrl+c exit  ·  esc interrupt"
+              : "  ctrl+c exit  ·  esc interrupt  ·  ctrl+p models  ·  ctrl+shift+e thinking  ·  ctrl+t fold  ·  shift+tab plan",
+          );
           const hints = working
             ? theme.fg("accent", `  ${SPINNER[frame]} working…`) +
               theme.fg("muted", "  ·  esc to interrupt")
             : idleHints;
 
+          const spendLabel = spendText(spend);
+          const maybeSpend = narrow || !spendLabel ? "" : theme.fg("dim", `  ·  ${spendLabel}`);
+
           // Nothing to say off Spark, or no token: say so rather than draw a bar
           // full of empties that reads as "you have spent nothing".
           if (!token()) {
-            return [theme.fg("muted", "  not on Spark") + modelLabel + modeLabel, hints];
+            return [theme.fg("muted", "  not on Spark") + maybeModel + modeLabel + maybeSpend, hints];
           }
-          if (!quota) return [theme.fg("dim", "  Spark quota unavailable") + modelLabel + modeLabel, hints];
+          if (!quota) return [theme.fg("dim", "  quota n/a") + maybeModel + modeLabel + maybeSpend, hints];
 
           if (quota.aiEnabled === false) {
-            return [theme.fg("error", "  AI disabled for your account — ask your teacher") + modelLabel + modeLabel, hints];
+            return [theme.fg("error", "  AI disabled for your account — ask your teacher") + maybeModel + modeLabel + maybeSpend, hints];
           }
 
           // No ceiling: no meter and no percentage, because a full bar implies a
@@ -200,7 +290,7 @@ export default function sparkFooter(pi: ExtensionAPI) {
           if (isUnlimited(quota)) {
             return [
               theme.fg("dim", `  ${Math.round(quota.tokensUsed / 1000)}k used today`) +
-                theme.fg("muted", "  ·  unlimited") + modelLabel + modeLabel,
+                theme.fg("muted", "  ·  unlimited") + maybeModel + modeLabel + maybeSpend,
               hints,
             ];
           }
@@ -210,7 +300,7 @@ export default function sparkFooter(pi: ExtensionAPI) {
           if (quota.dailyTokenLimit === null || quota.dailyTokenLimit === undefined) {
             return [
               theme.fg("dim", `  ${Math.round(quota.tokensUsed / 1000)}k used today`) +
-                theme.fg("muted", "  ·  no daily token cap") + modelLabel + modeLabel,
+                theme.fg("muted", "  ·  no daily token cap") + maybeModel + modeLabel + maybeSpend,
               hints,
             ];
           }
@@ -220,15 +310,15 @@ export default function sparkFooter(pi: ExtensionAPI) {
           const bar = theme.fg("accent", meter(tokensUsed, limit));
           const percent = theme.fg("muted", pct(tokensUsed, limit));
 
-          // Narrow terminals keep the bar and the percentage only; the absolute
-          // token counts are the part that can be dropped.
-          if (width < 52) return [`  ${bar} ${percent}` + modelLabel + modeLabel, hints];
+          // Narrow terminals keep the bar, the percentage and the mode only;
+          // the absolute counts, model and spend are the droppable parts.
+          if (narrow) return [`  ${bar} ${percent}` + modeLabel, hints];
 
           const numbers = theme.fg(
             "dim",
             `${Math.round(tokensUsed / 1000)}k / ${Math.round(limit / 1000)}k today`,
           );
-          return [`  ${bar} ${percent}  ${numbers}` + modelLabel + modeLabel, hints];
+          return [`  ${bar} ${percent}  ${numbers}` + maybeModel + modeLabel + maybeSpend, hints];
         },
       };
     });
@@ -240,6 +330,7 @@ export default function sparkFooter(pi: ExtensionAPI) {
 
   pi.on("session_shutdown", async () => {
     setWorking(false);
+    spend = { tokens: 0, dollars: null };
     if (timer) clearInterval(timer);
     timer = undefined;
     tui = undefined;
@@ -250,9 +341,11 @@ export default function sparkFooter(pi: ExtensionAPI) {
   });
 
   pi.on("agent_end", async () => {
+    // Usage entries land with the turn; recompute before the repaint below.
+    recomputeSpend();
     setWorking(false);
   });
 }
 
 // Exported for tests.
-export const _internals = { format, isUnlimited, meter, pct, activeModelId };
+export const _internals = { format, isUnlimited, meter, pct, activeModelId, sessionSpend, shortModelId, spendText };
