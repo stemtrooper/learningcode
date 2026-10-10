@@ -270,6 +270,10 @@ Useful commands, typed inside the session:
 | `/spark-login` | check your TLC-Spark token, or find out how to get a new one |
 | `/model` | switch model |
 | `/hotkeys` | keyboard shortcuts |
+| `/plan` | toggle Plan / Build mode (`shift+tab`) — plan without touching anything |
+| `/approve` | approve the plan and start building, checklist carried along |
+| `/todo` | manage the checklist: `add <text> \| done <n> \| clear` |
+| `/todos` | show the full plan checklist |
 
 `/quota`, `/seats` and `/spark-login` talk to Spark directly. They are the commands a
 stock AI coding tool does not have, because those endpoints are not part of any
@@ -437,6 +441,10 @@ often, and a student's install must not change underneath them mid-term.
 
 ## Changelog
 
+* **0.7.0** — Plan/Build mode (`shift+tab` or `/plan`): research-only
+  planning with writer tools hidden and blocked; checklist with footer
+  counts (`PLAN 0/5`, `BUILD 2/5 ✓`), `/todo` management with completions,
+  and `/approve` to carry a plan into Build.
 * **0.5.7** — scoped models remembered; footer shows the active model in
   yellow; Token Harbor gains `claude-haiku-5.5`; thinking cycle on
   `ctrl+shift+e`, `shift+tab` reserved for Plan/Build.

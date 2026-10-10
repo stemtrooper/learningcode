@@ -250,6 +250,53 @@ test("the /todo command completes subcommands and step numbers", async () => {
 	assert.equal(complete("add "), null, "free text after add");
 });
 
+test("the /approve command carries the checklist into Build", async () => {
+	const jiti = createJiti(import.meta.url);
+	const mod = await jiti.import("../extensions/plan-mode.ts");
+
+	const handlers = new Map();
+	const commands = new Map();
+	let activeTools = ["read", "bash", "edit", "write", "grep", "find", "ls"];
+	const statuses = new Map();
+	const notices = [];
+	const ctx = {
+		hasUI: true,
+		mode: "tui",
+		ui: {
+			setStatus: (k, v) => (v === undefined ? statuses.delete(k) : statuses.set(k, v)),
+			setWidget: () => {},
+			notify: (m) => notices.push(m),
+		},
+	};
+	const pi = {
+		on: (event, fn) => handlers.set(event, fn),
+		registerCommand: (name, opts) => commands.set(name, opts),
+		registerShortcut: () => {},
+		getActiveTools: () => [...activeTools],
+		setActiveTools: (names) => {
+			activeTools = [...names];
+		},
+	};
+
+	mod.default(pi);
+	await handlers.get("session_start")({}, ctx);
+
+	// No plan, no approval.
+	await commands.get("approve").handler("", ctx);
+	assert.match(notices.at(-1), /already in Build/);
+
+	await commands.get("plan").handler("", ctx);
+	await commands.get("approve").handler("", ctx);
+	assert.match(notices.at(-1), /No checklist yet/);
+
+	await commands.get("todo").handler("add Survey auth flow", ctx);
+	await commands.get("todo").handler("add Add login page", ctx);
+	await commands.get("approve").handler("", ctx);
+	assert.equal(statuses.get("plan-mode"), "build 0/2", "checklist carried into Build");
+	assert.ok(activeTools.includes("edit"), "full tools restored");
+	assert.match(notices.at(-1), /Plan approved — 2 steps/);
+});
+
 test("checklist survives into Build and tracks [DONE:n] there", async () => {
 	const jiti = createJiti(import.meta.url);
 	const mod = await jiti.import("../extensions/plan-mode.ts");

@@ -99,6 +99,23 @@ export default function planMode(pi: ExtensionAPI) {
 		},
 	});
 
+	pi.registerCommand("approve", {
+		description: "Approve the plan: switch to Build and start executing",
+		handler: async (_args, ctx) => {
+			if (mode !== "plan") {
+				ctx.ui.notify("Nothing to approve — you are already in Build mode.", "info");
+				return;
+			}
+			if (todos.length === 0) {
+				ctx.ui.notify("No checklist yet. Ask for a plan first, then /approve it.", "info");
+				return;
+			}
+			const total = todos.length;
+			setMode("build", ctx, true);
+			ctx.ui.notify(`Plan approved — ${total} steps. Building: /todo done <n> as you go.`, "info");
+		},
+	});
+
 	pi.registerCommand("todo", {
 		description: "Manage the plan checklist: /todo add <text> | /todo done <n> | /todo clear",
 		getArgumentCompletions: (argumentPrefix: string) => {
