@@ -274,6 +274,7 @@ Useful commands, typed inside the session:
 | `/approve` | approve the plan and start building, checklist carried along |
 | `/todo` | manage the checklist: `add <text> \| done <n> \| clear` |
 | `/todos` | show the full plan checklist |
+| `/intro` | replay the 5-minute guided tour (`--no-intro` skips it) |
 
 `/quota`, `/seats` and `/spark-login` talk to Spark directly. They are the commands a
 stock AI coding tool does not have, because those endpoints are not part of any
@@ -441,6 +442,9 @@ often, and a student's install must not change underneath them mid-term.
 
 ## Changelog
 
+* **0.7.1** — footer shows session spend (`sess 3k ≈$0.03`, catalog-priced)
+  and compacts for narrow screens (short model id, `quota n/a`, trimmed
+  hints); scripted first-run tour with `/intro` replay and `--no-intro`.
 * **0.7.0** — Plan/Build mode (`shift+tab` or `/plan`): research-only
   planning with writer tools hidden and blocked; checklist with footer
   counts (`PLAN 0/5`, `BUILD 2/5 ✓`), `/todo` management with completions,
