@@ -15,7 +15,7 @@ import {
 
 test("the opener discloses cost and lists four steps", () => {
 	assert.match(INTRO_OPENER, /5-minute/);
-	assert.match(INTRO_OPENER, /token/i);
+	assert.match(INTRO_OPENER, /token/i); assert.match(INTRO_OPENER, /type skip/i);
 	assert.match(INTRO_OPENER, /Shift\+Tab/);
 	assert.match(INTRO_OPENER, /\/quota/);
 });
