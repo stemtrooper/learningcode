@@ -1,9 +1,23 @@
-# Plan Mode / Build Mode (Shift+Tab) — implementation plan
+# Plan Mode / Build Mode (Shift+Tab) — final build plan
 
-Status: **planned, not built**. This document saves the design so it can be
-implemented later exactly as researched. All Pi API claims below were verified
-against `@earendil-works/pi-coding-agent@1.1.0` in `node_modules`
-(`dist/core/extensions/types.d.ts`).
+Status: **approved, to build as 0.6.0**. All Pi API claims verified against
+`@earendil-works/pi-coding-agent@1.1.0` in `node_modules`
+(`dist/core/extensions/types.d.ts`; `KeyId` in `@earendil-works/pi-tui`).
+
+## Locked decisions
+
+- **Shift+Tab toggles Plan/Build**, matching other agents. Freed in 0.5.7 by
+  moving thinking-cycle to `ctrl+shift+e` (`ensureThinkingCycleKey` seeds
+  `<agent-dir>/keybindings.json`; `shift+tab` is a valid `KeyId`).
+- **No right-side panel exists** in Pi's API: `setWidget` placement is only
+  `aboveEditor | belowEditor`. The progress checklist is an above-editor
+  widget, shown only when the window is wide enough; the phone gets a text
+  checklist through the bridge instead.
+- **Single working indicator**: the footer owns it (`setWorkingVisible(false)`
+  since `621de60`). Plan mode adds no new spinners.
+- **Default is Build**, including after `--resume` / session switch. No
+  persistence in 0.6.0: resuming into a neutered agent confuses students.
+- **Minor bump → 0.6.0** with tag, CHANGELOG entry, README highlight + rows.
 
 ## Goal
 
@@ -35,7 +49,13 @@ current mode) and impossible to misunderstand (blocked calls say why).
 - Our own footer (`extensions/footer.ts`) for the mode indicator, following the
   same handler-driven pattern as the quota meter and working spinner.
 
-## Design: `extensions/plan-mode.ts`
+## Design: `extensions/plan-mode.ts` (+ `extensions/plan-todos.ts` widget)
+
+Remote path: the extension loads in RPC mode too (remote uses the same
+`forcedPiArgs` + `PI_EXTENSIONS`), so `/plan` typed in the phone input works
+with no extra wiring. `registerShortcut` must degrade gracefully under RPC
+(no keyboard) — verify it does not throw; gate TUI-only calls on
+`ctx.hasUI && ctx.mode === "tui"`.
 
 - State: `"build" | "plan"`, default `"build"` on `session_start`. No
   persistence initially — every session starts in Build, which is also the
@@ -51,10 +71,17 @@ current mode) and impossible to misunderstand (blocked calls say why).
   `"Plan mode is on — press Shift+Tab for Build mode to edit."`
   Allowlist is the safe direction for students: a writer nobody classified yet
   must fail closed.
-- Indicator: footer gains a mode segment (e.g. `· PLAN` / `· BUILD`) next to
-  the quota line. Exact widget TBD at build time — check `ctx.ui.setStatus`
-  semantics versus extending our footer component; do not fight Pi's own
-  status area.
+- Indicator: footer gains a mode segment (`· PLAN` in `warning` yellow /
+  `· BUILD` dim) next to the yellow model label, via silent repaint.
+  Footer hint line gains `shift+tab plan`.
+- Progress checklist: plan-mode state tracks steps
+  (`{ title, done }[]`, seeded by the model from its own plan or a
+  `/plan <steps>`-style seed — exact seeding TBD at build). A widget
+  (`plan-todos`, `aboveEditor`) renders `✓ done / ● current / ○ todo`,
+  and returns `[]` when narrow (threshold TBD, ~100 cols, same pattern as
+  the footer's `width < 52` branch), when in Build mode, or when no plan is
+  active. Phone: text checklist through the existing bridge status path
+  (`extension_ui`); verify `setWidget` is inert under RPC and does not error.
 
 ## Edge cases to handle at build time
 
@@ -79,6 +106,5 @@ Drive the extension handlers with stubs, no TUI:
 
 ## Rollout
 
-Implement → `npm test` (32 tests today, expect ~36) → commit → push →
-publish as a **minor** (`0.5.0`, new feature) → `npm install -g .` refresh,
-same as 0.4.8–0.4.10.
+Implement → `npm test` (158 today) → commit → push → tag `v0.6.0` →
+CHANGELOG entry + README highlight/changelog rows → publish.
