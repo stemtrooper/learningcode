@@ -153,11 +153,13 @@ export default function sparkFooter(pi: ExtensionAPI) {
           // replaced by setFooter, so the active model must live here or an
           // opencode default shows nowhere.
           const modelLabel = theme.fg("warning", `  ·  ${activeModelId(sessionCtx)}`);
-          // Plan mode sets the `plan-mode` status; presence means PLAN.
-          const inPlan = footerData?.getExtensionStatuses?.().has(STATUS_PLAN_KEY) ?? false;
-          const modeLabel = inPlan
-            ? theme.fg("warning", "  ·  PLAN")
-            : theme.fg("dim", "  ·  build");
+          // Plan mode sets the `plan-mode` status ("plan" or "plan done/total").
+          const planStatus = footerData?.getExtensionStatuses?.().get(STATUS_PLAN_KEY);
+          const planCount = planStatus?.match(/plan\s+(\d+)\/(\d+)/)?.slice(1, 3).join("/");
+          const modeLabel =
+            planStatus != null
+              ? theme.fg("warning", `  ·  PLAN${planCount ? ` ${planCount}` : ""}`)
+              : theme.fg("dim", "  ·  build");
           // Every path ends with the exit hint. Students asked how to quit,
           // and the footer is the one line that is always on screen.
           // (ctrl+c clears the editor; pressed twice, or on an empty editor

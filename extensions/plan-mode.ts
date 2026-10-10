@@ -28,21 +28,21 @@ export const PLAN_WIDGET_MIN_WIDTH = 100;
 const STATUS_KEY = "plan-mode";
 
 function statusFor(ctx: ExtensionContext, mode: string, todos: Todo[]): void {
-	if (mode === "plan") ctx.ui.setStatus(STATUS_KEY, "plan");
-	else ctx.ui.setStatus(STATUS_KEY, undefined);
+	// Footer parses this: "plan" or "plan done/total".
+	if (mode !== "plan") {
+		ctx.ui.setStatus(STATUS_KEY, undefined);
+		return;
+	}
+	const done = todos.filter((t) => t.completed).length;
+	ctx.ui.setStatus(STATUS_KEY, todos.length > 0 ? `plan ${done}/${todos.length}` : "plan");
 }
 
 function todoLines(todos: Todo[], theme: { fg(token: string, text: string): string }): string[] {
+	// Single row: the current step plus the count. Full list is one /todos away.
 	const done = todos.filter((t) => t.completed).length;
- const head = theme.fg("muted", `Plan ${done}/${todos.length}`);
-	return [
-		head,
-		...todos.map((t) =>
-			t.completed
-				? theme.fg("success", `  ✓ ${t.text}`)
-				: theme.fg("dim", `  ○ ${t.text}`),
-		),
-	];
+	const current = todos.find((t) => !t.completed);
+	const step = current ? `  ● ${current.text}` : "  ✓ all done";
+	return [theme.fg("muted", `Plan ${done}/${todos.length}`) + theme.fg("dim", step)];
 }
 
 export default function planMode(pi: ExtensionAPI) {

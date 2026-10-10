@@ -134,7 +134,8 @@ test("the checklist widget stays hidden on narrow windows", async () => {
 		],
 		theme,
 	);
+	assert.equal(lines.length, 1, "one row, not the whole list");
 	assert.match(lines.join("\n"), /Plan 1\/2/);
-	assert.match(lines.join("\n"), /✓ A/);
+	assert.match(lines.join("\n"), /B/, "shows the current step, not the done one");
 	assert.ok(PLAN_WIDGET_MIN_WIDTH >= 80, "only shown when wide enough");
 });
