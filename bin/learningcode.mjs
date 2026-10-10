@@ -27,10 +27,11 @@ import { hasToken, looksLikeToken, promptSecret, resolveToken, writeCachedToken 
 import { agentEnvironment, forcedPiArgs, resolvePiEntry } from "../lib/pi.mjs";
 import { remoteStatus, remoteStop, rotateRemote, runRemote, runRemoteServer } from "../lib/remote/index.mjs";
 import { formatNotice, markNoticeShown, pendingNotice } from "../lib/changelog.mjs";
+import { AUTO_INTRO_ENV, NO_INTRO_ENV, hasSeenIntro, shouldAutoIntro } from "../lib/intro.mjs";
 
 const require = createRequire(import.meta.url);
 
-const OWN_FLAGS = new Set(["--help", "-h", "--version", "-v", "--login", "--show-config"]);
+const OWN_FLAGS = new Set(["--help", "-h", "--version", "-v", "--login", "--show-config", "--no-intro"]);
 const OWN_FLAGS_WITH_VALUE = new Set(["--token", "--base-url", "--login-provider"]);
 const HELP = `learningcode - TLC Spark coding agent
 
@@ -42,6 +43,7 @@ Setup
   --base-url <url>   Point TLC-Spark at a different Spark deployment
   --login            Re-enter and cache your Spark token
   --show-config      Print resolved paths and settings, then exit
+  --no-intro         Skip the first-run guided tour
   -h, --help         Show this help
   -v, --version      Show version
 
@@ -74,6 +76,22 @@ Remote
   learningcode remote help    how the phone side works
 `;
 
+/** True when the Pi args carry the student's own opening message. */
+function hasPositionalPrompt(toPi) {
+	const valueFlags = new Set(["--model", "--models", "--session", "--use-theme", "--theme", "--profile"]);
+	for (let i = 0; i < toPi.length; i += 1) {
+		const arg = toPi[i];
+		if (arg.startsWith("-")) {
+			if (!arg.startsWith("--")) continue;
+			if (arg.includes("=")) continue;
+			if (valueFlags.has(arg)) i += 1;
+			continue;
+		}
+		return true;
+	}
+	return false;
+}
+
 /** Split our flags from the ones meant for Pi. */
 function parseArgs(argv) {
 	const own = { help: false, version: false, login: false, showConfig: false, loginProvider: null };
@@ -89,6 +107,7 @@ function parseArgs(argv) {
 			if (arg === "--version" || arg === "-v") own.version = true;
 			if (arg === "--login") own.login = true;
 			if (arg === "--show-config") own.showConfig = true;
+			if (arg === "--no-intro") own.noIntro = true;
 			continue;
 		}
 
@@ -530,6 +549,20 @@ async function main() {
 	}
 
 	const childEnv = { ...process.env };
+
+	// First-run tour: the intro extension auto-posts the scripted opener only
+	// when the launcher confirms a bare interactive launch (never hijacking a
+	// typed message). The extension owns the marker file; we only pass context.
+	if (own.noIntro) childEnv[NO_INTRO_ENV] = "1";
+	else if (
+		shouldAutoIntro({
+			interactive,
+			seen: hasSeenIntro(dir),
+			noIntro: false,
+			hasInitialPrompt: hasPositionalPrompt(toPi),
+		})
+	)
+		childEnv[AUTO_INTRO_ENV] = "1";
 
 	// Pi prefers a stored credential in auth.json over the `$SPARK_API_KEY` the
 	// provider config names, so leaving the token only in the environment lets the

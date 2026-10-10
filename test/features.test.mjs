@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { PI_EXTENSIONS } from "../lib/pi.mjs";
 
 test("the new features are registered as launch extensions", () => {
-	for (const name of ["approval.ts", "done-sound.ts", "checkpoint.ts"]) {
+	for (const name of ["approval.ts", "done-sound.ts", "checkpoint.ts", "intro.ts"]) {
 		assert.ok(PI_EXTENSIONS.includes(name), `${name} is loaded on every launch`);
 	}
 });
