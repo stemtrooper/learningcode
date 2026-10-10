@@ -1,6 +1,8 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Key } from "@earendil-works/pi-tui";
 import {
+	addTodoItem,
+	completeTodoItem,
 	extractTodoItems,
 	isBlockedInPlanMode,
 	isSafeCommand,
@@ -52,16 +54,22 @@ export default function planMode(pi: ExtensionAPI) {
 
 	const refresh = (ctx: ExtensionContext) => {
 		statusFor(ctx, mode, todos);
-		if (mode === "plan" && todos.length > 0) {
-			ctx.ui.setWidget("plan-todos", (_tui, theme) => ({
-				invalidate() {},
-				render(width: number): string[] {
-					if (width < PLAN_WIDGET_MIN_WIDTH) return [];
-					return todoLines(todos, theme as unknown as { fg(token: string, text: string): string });
-				},
-			}));
-		} else {
-			ctx.ui.setWidget("plan-todos", undefined);
+		// setWidget is TUI-only; under RPC (phone) it may be inert or throw —
+		// the phone gets the text checklist through /todos notifies instead.
+		try {
+			if (mode === "plan" && todos.length > 0) {
+				ctx.ui.setWidget("plan-todos", (_tui, theme) => ({
+					invalidate() {},
+					render(width: number): string[] {
+						if (width < PLAN_WIDGET_MIN_WIDTH) return [];
+						return todoLines(todos, theme as unknown as { fg(token: string, text: string): string });
+					},
+				}));
+			} else {
+				ctx.ui.setWidget("plan-todos", undefined);
+			}
+		} catch {
+			/* RPC mode: no widgets — /todos notifies carry the checklist. */
 		}
 		if (mode === "plan") pi.setActiveTools(planToolSet(toolsBefore ?? pi.getActiveTools()));
 	};
@@ -86,6 +94,34 @@ export default function planMode(pi: ExtensionAPI) {
 		description: "Toggle Plan / Build mode (Shift+Tab)",
 		handler: async (_args, ctx) => {
 			setMode(mode === "plan" ? "build" : "plan", ctx);
+		},
+	});
+
+	pi.registerCommand("todo", {
+		description: "Manage the plan checklist: /todo add <text> | /todo done <n> | /todo clear",
+		handler: async (args, ctx) => {
+			const text = String(args ?? "").trim();
+			const space = text.indexOf(" ");
+			const sub = (space === -1 ? text : text.slice(0, space)).toLowerCase();
+			const rest = space === -1 ? "" : text.slice(space + 1).trim();
+			if (sub === "add" && rest.length > 0) {
+				const item = addTodoItem(todos, rest);
+				refresh(ctx);
+				ctx.ui.notify(`Added step ${item.step}: ${item.text}`, "info");
+			} else if (sub === "done" && rest.length > 0) {
+				if (!completeTodoItem(todos, rest)) {
+					ctx.ui.notify(`No step ${rest}. /todos lists the checklist.`, "info");
+					return;
+				}
+				refresh(ctx);
+				ctx.ui.notify(`Step ${rest} done.`, "info");
+			} else if (sub === "clear") {
+				todos = [];
+				refresh(ctx);
+				ctx.ui.notify("Checklist cleared.", "info");
+			} else {
+				ctx.ui.notify("Usage: /todo add <text> | /todo done <n> | /todo clear", "info");
+			}
 		},
 	});
 

@@ -75,13 +75,16 @@ with no extra wiring. `registerShortcut` must degrade gracefully under RPC
   `· BUILD` dim) next to the yellow model label, via silent repaint.
   Footer hint line gains `shift+tab plan`.
 - Progress checklist: plan-mode state tracks steps
-  (`{ title, done }[]`, seeded by the model from its own plan or a
-  `/plan <steps>`-style seed — exact seeding TBD at build). A widget
-  (`plan-todos`, `aboveEditor`) renders `✓ done / ● current / ○ todo`,
-  and returns `[]` when narrow (threshold TBD, ~100 cols, same pattern as
+  (`{ step, text, completed }[]`, seeded from the model's `Plan:` header on
+  `agent_end`, or manually via `/todo add <text>` / `/todo done <n>` /
+  `/todo clear`; `/todos` lists the full checklist). A widget
+  (`plan-todos`, `aboveEditor`) renders the single current-step row,
+  and returns `[]` when narrow (< 100 cols, same pattern as
   the footer's `width < 52` branch), when in Build mode, or when no plan is
-  active. Phone: text checklist through the existing bridge status path
-  (`extension_ui`); verify `setWidget` is inert under RPC and does not error.
+  active. All-done shows `PLAN n/n ✓` in the footer and `✓ all done` in the
+  widget. Phone: text checklist through `ctx.ui.notify`, which RPC forwards
+  as `extension_ui_request`; `setWidget` is guarded (try/catch) so RPC never
+  throws.
 
 ## Edge cases to handle at build time
 

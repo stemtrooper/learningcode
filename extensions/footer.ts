@@ -155,10 +155,12 @@ export default function sparkFooter(pi: ExtensionAPI) {
           const modelLabel = theme.fg("warning", `  ·  ${activeModelId(sessionCtx)}`);
           // Plan mode sets the `plan-mode` status ("plan" or "plan done/total").
           const planStatus = footerData?.getExtensionStatuses?.().get(STATUS_PLAN_KEY);
-          const planCount = planStatus?.match(/plan\s+(\d+)\/(\d+)/)?.slice(1, 3).join("/");
+          const planMatch = planStatus?.match(/plan\s+(\d+)\/(\d+)/);
+          const planCount = planMatch?.slice(1, 3).join("/");
+          const planAllDone = planMatch != null && planMatch[1] === planMatch[2];
           const modeLabel =
             planStatus != null
-              ? theme.fg("warning", `  ·  PLAN${planCount ? ` ${planCount}` : ""}`)
+              ? theme.fg("warning", `  ·  PLAN${planCount ? ` ${planCount}` : ""}${planAllDone ? " ✓" : ""}`)
               : theme.fg("dim", "  ·  build");
           // Every path ends with the exit hint. Students asked how to quit,
           // and the footer is the one line that is always on screen.

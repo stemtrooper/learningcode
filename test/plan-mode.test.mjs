@@ -3,7 +3,9 @@ import test from "node:test";
 import { createJiti } from "jiti";
 import {
 	PLAN_READ_TOOLS,
+	addTodoItem,
 	cleanStepText,
+	completeTodoItem,
 	extractTodoItems,
 	isBlockedInPlanMode,
 	isSafeCommand,
@@ -138,6 +140,67 @@ test("the checklist widget stays hidden on narrow windows", async () => {
 	assert.match(lines.join("\n"), /Plan 1\/2/);
 	assert.match(lines.join("\n"), /B/, "shows the current step, not the done one");
 	assert.ok(PLAN_WIDGET_MIN_WIDTH >= 80, "only shown when wide enough");
+});
+
+test("manual todo add/done helpers", () => {
+	const items = [];
+	const first = addTodoItem(items, "Survey auth flow");
+	assert.equal(first.step, 1);
+	addTodoItem(items, "Add login page");
+	assert.equal(items.length, 2);
+	assert.equal(completeTodoItem(items, 1), true);
+	assert.equal(items[0].completed, true);
+	assert.equal(completeTodoItem(items, 99), false);
+});
+
+test("the /todo command manages the checklist", async () => {
+	const jiti = createJiti(import.meta.url);
+	const mod = await jiti.import("../extensions/plan-mode.ts");
+
+	const handlers = new Map();
+	const commands = new Map();
+	let activeTools = ["read", "bash", "edit", "write", "grep", "find", "ls"];
+	const statuses = new Map();
+	const notices = [];
+	const ctx = {
+		hasUI: true,
+		mode: "tui",
+		ui: {
+			setStatus: (k, v) => (v === undefined ? statuses.delete(k) : statuses.set(k, v)),
+			setWidget: () => {},
+			notify: (m) => notices.push(m),
+		},
+	};
+	const pi = {
+		on: (event, fn) => handlers.set(event, fn),
+		registerCommand: (name, opts) => commands.set(name, opts),
+		registerShortcut: () => {},
+		getActiveTools: () => [...activeTools],
+		setActiveTools: (names) => {
+			activeTools = [...names];
+		},
+	};
+
+	mod.default(pi);
+	await handlers.get("session_start")({}, ctx);
+	await commands.get("plan").handler("", ctx);
+
+	const todo = commands.get("todo").handler;
+	await todo("add Survey auth flow", ctx);
+	await todo("add Add login page", ctx);
+	assert.equal(statuses.get("plan-mode"), "plan 0/2");
+	await todo("done 1", ctx);
+	assert.equal(statuses.get("plan-mode"), "plan 1/2");
+	await todo("done 99", ctx);
+	assert.match(notices.at(-1), /No step 99/);
+	await todo("done 2", ctx);
+	assert.equal(statuses.get("plan-mode"), "plan 2/2");
+	await commands.get("todos").handler("", ctx);
+	assert.match(notices.at(-1), /✓[\s\S]*✓/);
+	await todo("clear", ctx);
+	assert.equal(statuses.get("plan-mode"), "plan");
+	await todo("bogus", ctx);
+	assert.match(notices.at(-1), /Usage/);
 });
 
 test("agent_end parses real-shaped AgentMessage entries into footer counts", async () => {
