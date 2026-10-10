@@ -135,3 +135,36 @@ test("the extension stays silent without the auto env or with --no-intro", async
 		await rm(dir, { recursive: true, force: true });
 	}
 });
+
+test("--no-intro records the opt-out so old users are asked once", async () => {
+	const jiti = createJiti(import.meta.url);
+	const mod = await jiti.import("../extensions/intro.ts");
+	const h = harness();
+	const dir = await h.dirPromise;
+	const prevAuto = process.env[AUTO_INTRO_ENV];
+	const prevNo = process.env[NO_INTRO_ENV];
+	const prevDir = process.env.LEARNINGCODE_DIR;
+	try {
+		process.env[AUTO_INTRO_ENV] = "1";
+		process.env[NO_INTRO_ENV] = "1";
+		process.env.LEARNINGCODE_DIR = dir;
+
+		mod.default(h.pi);
+		await h.handlers.get("session_start")({}, h.ctx);
+		assert.equal(h.sent.length, 0, "tour skipped");
+		assert.equal(hasSeenIntro(dir), true, "skip recorded as decided");
+
+		// Next bare launch without the flag: still silent.
+		delete process.env[NO_INTRO_ENV];
+		await h.handlers.get("session_start")({}, h.ctx);
+		assert.equal(h.sent.length, 0, "never asked again");
+	} finally {
+		if (prevAuto === undefined) delete process.env[AUTO_INTRO_ENV];
+		else process.env[AUTO_INTRO_ENV] = prevAuto;
+		if (prevNo === undefined) delete process.env[NO_INTRO_ENV];
+		else process.env[NO_INTRO_ENV] = prevNo;
+		if (prevDir === undefined) delete process.env.LEARNINGCODE_DIR;
+		else process.env.LEARNINGCODE_DIR = prevDir;
+		await rm(dir, { recursive: true, force: true });
+	}
+});

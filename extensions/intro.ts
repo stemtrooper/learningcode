@@ -29,11 +29,22 @@ export default function intro(pi: ExtensionAPI) {
 
 	pi.on("session_start", async (_event, ctx) => {
 		if (!ctx.hasUI || ctx.mode !== "tui") return;
-		if (process.env[NO_INTRO_ENV] === "1") return;
+		const d = dir();
+		// --no-intro records the opt-out, so old users who skip once are
+		// never asked again. The marker means "decided", not just "toured".
+		if (process.env[NO_INTRO_ENV] === "1") {
+			if (d && !hasSeenIntro(d)) {
+				try {
+					await markIntroSeen(d);
+				} catch {
+					/* best effort; the flag still skips this launch */
+				}
+			}
+			return;
+		}
 		// Auto-post only on a bare first launch (launcher sets the env after
 		// confirming no typed message); /intro replays any time.
 		if (process.env[AUTO_INTRO_ENV] !== "1") return;
-		const d = dir();
 		if (!d || hasSeenIntro(d)) return;
 		try {
 			pi.sendUserMessage(INTRO_OPENER);
