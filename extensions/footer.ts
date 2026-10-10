@@ -148,7 +148,7 @@ export default function sparkFooter(pi: ExtensionAPI) {
           // Pi's stock footer (folder, session, model, context usage) is
           // replaced by setFooter, so the active model must live here or an
           // opencode default shows nowhere.
-          const modelLabel = theme.fg("muted", `  ·  ${activeModelId(sessionCtx)}`);
+          const modelLabel = theme.fg("warning", `  ·  ${activeModelId(sessionCtx)}`);
           // Every path ends with the exit hint. Students asked how to quit,
           // and the footer is the one line that is always on screen.
           // (ctrl+c clears the editor; pressed twice, or on an empty editor
@@ -168,7 +168,7 @@ export default function sparkFooter(pi: ExtensionAPI) {
           // Nothing to say off Spark, or no token: say so rather than draw a bar
           // full of empties that reads as "you have spent nothing".
           if (!token()) {
-            return [theme.fg("dim", "  not on Spark") + modelLabel, hints];
+            return [theme.fg("muted", "  not on Spark") + modelLabel, hints];
           }
           if (!quota) return [theme.fg("dim", "  Spark quota unavailable") + modelLabel, hints];
 
