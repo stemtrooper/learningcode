@@ -153,15 +153,21 @@ export default function sparkFooter(pi: ExtensionAPI) {
           // replaced by setFooter, so the active model must live here or an
           // opencode default shows nowhere.
           const modelLabel = theme.fg("warning", `  ·  ${activeModelId(sessionCtx)}`);
-          // Plan mode sets the `plan-mode` status ("plan" or "plan done/total").
+          // Plan mode sets the `plan-mode` status ("plan" or "plan done/total");
+          // Build mode keeps "build done/total" while a checklist is active.
           const planStatus = footerData?.getExtensionStatuses?.().get(STATUS_PLAN_KEY);
           const planMatch = planStatus?.match(/plan\s+(\d+)\/(\d+)/);
           const planCount = planMatch?.slice(1, 3).join("/");
           const planAllDone = planMatch != null && planMatch[1] === planMatch[2];
+          const buildMatch = planStatus?.match(/build\s+(\d+)\/(\d+)/);
+          const buildCount = buildMatch?.slice(1, 3).join("/");
+          const buildAllDone = buildMatch != null && buildMatch[1] === buildMatch[2];
           const modeLabel =
-            planStatus != null
+            planStatus != null && planStatus.startsWith("plan")
               ? theme.fg("warning", `  ·  PLAN${planCount ? ` ${planCount}` : ""}${planAllDone ? " ✓" : ""}`)
-              : theme.fg("dim", "  ·  build");
+              : buildCount
+                ? theme.fg("dim", `  ·  BUILD ${buildCount}${buildAllDone ? " ✓" : ""}`)
+                : theme.fg("dim", "  ·  build");
           // Every path ends with the exit hint. Students asked how to quit,
           // and the footer is the one line that is always on screen.
           // (ctrl+c clears the editor; pressed twice, or on an empty editor

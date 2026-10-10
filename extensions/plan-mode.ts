@@ -30,13 +30,14 @@ export const PLAN_WIDGET_MIN_WIDTH = 100;
 const STATUS_KEY = "plan-mode";
 
 function statusFor(ctx: ExtensionContext, mode: string, todos: Todo[]): void {
-	// Footer parses this: "plan" or "plan done/total".
-	if (mode !== "plan") {
-		ctx.ui.setStatus(STATUS_KEY, undefined);
+	// Footer parses this: "plan" or "plan done/total" in Plan mode,
+	// "build done/total" in Build mode while a checklist is active.
+	const done = todos.filter((t) => t.completed).length;
+	if (mode === "plan") {
+		ctx.ui.setStatus(STATUS_KEY, todos.length > 0 ? `plan ${done}/${todos.length}` : "plan");
 		return;
 	}
-	const done = todos.filter((t) => t.completed).length;
-	ctx.ui.setStatus(STATUS_KEY, todos.length > 0 ? `plan ${done}/${todos.length}` : "plan");
+	ctx.ui.setStatus(STATUS_KEY, todos.length > 0 ? `build ${done}/${todos.length}` : undefined);
 }
 
 function todoLines(todos: Todo[], theme: { fg(token: string, text: string): string }): string[] {
@@ -84,7 +85,8 @@ export default function planMode(pi: ExtensionAPI) {
 		} else {
 			pi.setActiveTools(toolsBefore ?? pi.getActiveTools());
 			toolsBefore = undefined;
-			todos = [];
+			// Keep the checklist: progress stays visible as BUILD done/total.
+			// A fresh Plan session (or /todo clear) resets it.
 			if (!silent) ctx.ui.notify("Build mode — full access restored.", "info");
 		}
 		refresh(ctx);
@@ -175,8 +177,8 @@ export default function planMode(pi: ExtensionAPI) {
 	});
 
 	// Pull numbered steps out of the model's plan; track [DONE:n] checkoffs.
+	// Runs in both modes so BUILD done/total climbs as steps complete.
 	pi.on("agent_end", async (event, ctx) => {
-		if (mode !== "plan") return undefined;
 		const messages = (event as { messages?: unknown[] }).messages ?? [];
 		const texts: string[] = [];
 		for (const item of messages) {

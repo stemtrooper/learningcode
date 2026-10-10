@@ -203,6 +203,55 @@ test("the /todo command manages the checklist", async () => {
 	assert.match(notices.at(-1), /Usage/);
 });
 
+test("checklist survives into Build and tracks [DONE:n] there", async () => {
+	const jiti = createJiti(import.meta.url);
+	const mod = await jiti.import("../extensions/plan-mode.ts");
+
+	const handlers = new Map();
+	const commands = new Map();
+	let activeTools = ["read", "bash", "edit", "write", "grep", "find", "ls"];
+	const statuses = new Map();
+	const notices = [];
+	const ctx = {
+		hasUI: true,
+		mode: "tui",
+		ui: {
+			setStatus: (k, v) => (v === undefined ? statuses.delete(k) : statuses.set(k, v)),
+			setWidget: () => {},
+			notify: (m) => notices.push(m),
+		},
+	};
+	const pi = {
+		on: (event, fn) => handlers.set(event, fn),
+		registerCommand: (name, opts) => commands.set(name, opts),
+		registerShortcut: () => {},
+		getActiveTools: () => [...activeTools],
+		setActiveTools: (names) => {
+			activeTools = [...names];
+		},
+	};
+
+	mod.default(pi);
+	await handlers.get("session_start")({}, ctx);
+	await commands.get("plan").handler("", ctx);
+	await commands.get("todo").handler("add Survey auth flow", ctx);
+	await commands.get("todo").handler("add Add login page", ctx);
+	assert.equal(statuses.get("plan-mode"), "plan 0/2");
+
+	// Flip to Build: checklist preserved, footer reads BUILD counts.
+	await commands.get("plan").handler("", ctx);
+	assert.equal(statuses.get("plan-mode"), "build 0/2");
+	assert.ok(activeTools.includes("edit"), "full tools restored");
+
+	// [DONE:n] markers advance the count in Build mode too.
+	await handlers.get("agent_end")({ messages: [{ role: "assistant", content: "done [DONE:1]" }] }, ctx);
+	assert.equal(statuses.get("plan-mode"), "build 1/2");
+
+	// A fresh Plan session resets the checklist.
+	await commands.get("plan").handler("", ctx);
+	assert.equal(statuses.get("plan-mode"), "plan");
+});
+
 test("agent_end parses real-shaped AgentMessage entries into footer counts", async () => {
 	const jiti = createJiti(import.meta.url);
 	const mod = await jiti.import("../extensions/plan-mode.ts");

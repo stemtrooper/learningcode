@@ -17,6 +17,8 @@ Status: **approved, to build as 0.6.0**. All Pi API claims verified against
   since `621de60`). Plan mode adds no new spinners.
 - **Default is Build**, including after `--resume` / session switch. No
   persistence in 0.6.0: resuming into a neutered agent confuses students.
+  The checklist survives Plan → Build (footer reads `BUILD done/total`) so
+  progress stays visible while building; a fresh Plan session resets it.
 - **Minor bump → 0.6.0** with tag, CHANGELOG entry, README highlight + rows.
 
 ## Goal
