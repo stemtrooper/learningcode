@@ -18,6 +18,11 @@ inference through **TLC-Spark**.
 general-purpose AI coding tool: the model, the quota and the seat limits all belong
 to TLC, and every token you spend comes out of your course allocation.
 
+> **New in 0.5.7** — `/scoped-models` picks are remembered across sessions;
+> the footer always shows the active model in yellow; Token Harbor gains
+> `claude-haiku-5.5`; thinking-level cycling moves to `ctrl+shift+e`, reserving
+> `shift+tab` for Plan/Build mode. See [Changelog](#changelog).
+
 ---
 
 ## You will need a TLC-Spark token
@@ -429,6 +434,15 @@ files costs roughly eleven turns. That is why the footer exists.
 
 Pi is pinned to an exact version on purpose: the runtime ships breaking changes
 often, and a student's install must not change underneath them mid-term.
+
+## Changelog
+
+* **0.5.7** — scoped models remembered; footer shows the active model in
+  yellow; Token Harbor gains `claude-haiku-5.5`; thinking cycle on
+  `ctrl+shift+e`, `shift+tab` reserved for Plan/Build.
+* **0.5.6** — approval prompts, done sound, undo (`/undo`), test runs.
+* **0.5.5** — `learningcode doctor` health check.
+* **0.5.4** — Token Harbor provider login; `/model` scoped to logged-in providers.
 
 ## Licence
 
