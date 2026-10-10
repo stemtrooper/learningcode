@@ -141,11 +141,14 @@ export default function planMode(pi: ExtensionAPI) {
 	// Pull numbered steps out of the model's plan; track [DONE:n] checkoffs.
 	pi.on("agent_end", async (event, ctx) => {
 		if (mode !== "plan") return undefined;
-		const messages = (event as { messages?: { message?: { role?: string; content?: unknown } }[] }).messages ?? [];
+		const messages = (event as { messages?: unknown[] }).messages ?? [];
 		const texts: string[] = [];
-		for (const entry of messages) {
-			const content = entry.message?.content;
-			if (entry.message?.role !== "assistant" || content == null) continue;
+		for (const item of messages) {
+			// AgentMessage carries role/content directly; accept a { message } wrapper just in case.
+			const entry = (item as { message?: { role?: string; content?: unknown } })?.message
+				?? (item as { role?: string; content?: unknown });
+			const content = entry?.content;
+			if (entry?.role !== "assistant" || content == null) continue;
 			if (typeof content === "string") texts.push(content);
 			else if (Array.isArray(content)) {
 				for (const block of content as { type?: string; text?: string }[]) {

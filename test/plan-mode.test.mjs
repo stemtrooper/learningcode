@@ -139,3 +139,43 @@ test("the checklist widget stays hidden on narrow windows", async () => {
 	assert.match(lines.join("\n"), /B/, "shows the current step, not the done one");
 	assert.ok(PLAN_WIDGET_MIN_WIDTH >= 80, "only shown when wide enough");
 });
+
+test("agent_end parses real-shaped AgentMessage entries into footer counts", async () => {
+	const jiti = createJiti(import.meta.url);
+	const mod = await jiti.import("../extensions/plan-mode.ts");
+
+	const handlers = new Map();
+	const commands = new Map();
+	let activeTools = ["read", "bash", "edit", "write", "grep", "find", "ls"];
+	const statuses = new Map();
+	const ctx = {
+		hasUI: true,
+		mode: "tui",
+		ui: {
+			setStatus: (k, v) => (v === undefined ? statuses.delete(k) : statuses.set(k, v)),
+			setWidget: () => {},
+			notify: () => {},
+		},
+	};
+	const pi = {
+		on: (event, fn) => handlers.set(event, fn),
+		registerCommand: (name, opts) => commands.set(name, opts),
+		registerShortcut: () => {},
+		getActiveTools: () => [...activeTools],
+		setActiveTools: (names) => {
+			activeTools = [...names];
+		},
+	};
+
+	mod.default(pi);
+	await handlers.get("session_start")({}, ctx);
+	await commands.get("plan").handler("", ctx);
+	assert.equal(statuses.get("plan-mode"), "plan", "no counts before the plan");
+
+	// Real AgentEndEvent shape: messages are AgentMessage entries with role/content directly.
+	await handlers.get("agent_end")(
+		{ messages: [{ role: "assistant", content: "Intro\n\nPlan:\n1. Survey auth flow\n2. Add login page\n" }] },
+		ctx,
+	);
+	assert.equal(statuses.get("plan-mode"), "plan 0/2", "footer shows parsed counts");
+});
