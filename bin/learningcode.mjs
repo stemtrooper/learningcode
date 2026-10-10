@@ -21,7 +21,7 @@ import {
 	looksLikeTokenHarborKey,
 } from "../lib/tokenharbor.mjs";
 import { ensureSparkProvider, modelsPath, retargetProvider } from "../lib/models.mjs";
-import { ensureQuietStartup } from "../lib/settings.mjs";
+import { ensureQuietStartup, persistedModelPrefs, scopeCoversProvider, seedModelPrefs, writeEnabledModels } from "../lib/settings.mjs";
 import { ensureThemes, preferredTheme } from "../lib/themes.mjs";
 import { hasToken, looksLikeToken, promptSecret, resolveToken, writeCachedToken } from "../lib/token.mjs";
 import { agentEnvironment, forcedPiArgs, resolvePiEntry } from "../lib/pi.mjs";
@@ -395,7 +395,8 @@ async function main() {
 
 	// `--login` forces a fresh paste even when a token is already cached.
 	const requestedModel = readModel(toPi);
-	const effectiveModel = requestedModel ?? `${PROVIDER_ID}/${MODEL_ID}`;
+	const persistedEarly = await persistedModelPrefs(dir);
+	const effectiveModel = requestedModel ?? persistedEarly.defaultModel ?? `${PROVIDER_ID}/${MODEL_ID}`;
 	// Default to the TLC theme without overriding an explicit CLI choice.
 	// LEARNINGCODE_THEME flows through preferredTheme(), so it becomes the
 	// forced value rather than suppressing it. NB: Pi's --theme loads a theme
@@ -419,11 +420,39 @@ async function main() {
 	// from an interactive one.
 	// Only providers with a stored key (or env var) appear in /model. A student who
 	// passed their own --model or --models keeps exactly what they asked for.
+	// Persisted prefs (`defaultModel` via `/model` Ctrl+S, `enabledModels` via
+	// `/scoped-models`) win over our defaults: forcing `--model`/`--models` on
+	// every launch is what made the picker forget the student's scope.
 	const userPickedModels = toPi.some((arg) => arg === "--models" || arg.startsWith("--models="));
-	const scope = !requestedModel && !userPickedModels ? visibleModelPatterns(piModelListing(piEntry, dir), await loggedInProviders(dir)) : null;
+	const persisted = persistedEarly;
+	const loggedIn = await loggedInProviders(dir);
+	let scope = null;
+	if (!requestedModel && !userPickedModels) {
+		if (persisted.enabledModels) {
+			// A newly logged-in provider would otherwise stay hidden behind the
+			// old seed, so extend the persisted scope instead of overriding it.
+			const uncovered = [...loggedIn].filter((p) => !scopeCoversProvider(persisted.enabledModels, p));
+			if (uncovered.length) {
+				const fresh = visibleModelPatterns(piModelListing(piEntry, dir), loggedIn);
+				if (fresh) {
+					const merged = [...persisted.enabledModels];
+					for (const pattern of fresh) {
+						if (uncovered.includes(pattern.split("/")[0]) && !merged.includes(pattern)) merged.push(pattern);
+					}
+					await writeEnabledModels(dir, merged);
+				}
+			}
+		} else {
+			scope = visibleModelPatterns(piModelListing(piEntry, dir), loggedIn);
+			if (scope) await seedModelPrefs(dir, { enabledModels: scope });
+		}
+	}
+	if (!requestedModel && !persisted.defaultModel) {
+		await seedModelPrefs(dir, { defaultModel: `${PROVIDER_ID}/${MODEL_ID}` });
+	}
 
 	const forced = forcedPiArgs({
-		model: effectiveModel && !requestedModel ? effectiveModel : undefined,
+		model: undefined,
 		scope,
 		theme: userPickedTheme ? null : preferredTheme(),
 		extraFlags: extraPiFlags(),

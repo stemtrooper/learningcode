@@ -90,6 +90,18 @@ async function fetchQuota(): Promise<Quota | null> {
   }
 }
 
+/**
+ * Read the active model id live at render time (`provider/model`), so a
+ * `/model` switch or `--model opencode-go/...` shows without a restart.
+ * The session_start ctx carries the live session object, so reading it per
+ * render is enough; no model-change subscription to go stale.
+ */
+export function activeModelId(ctx: unknown): string {
+	const model = (ctx as { model?: { provider?: string; id?: string } | null })?.model;
+	if (!model?.id) return "no-model";
+	return model.provider ? `${model.provider}/${model.id}` : model.id;
+}
+
 export default function sparkFooter(pi: ExtensionAPI) {
   let quota: Quota | null = null;
   let timer: ReturnType<typeof setInterval> | undefined;
@@ -128,10 +140,15 @@ export default function sparkFooter(pi: ExtensionAPI) {
       tui?.requestRender?.();
     };
 
+    const sessionCtx = ctx as { model?: { provider?: string; id?: string } | null };
     ctx.ui.setFooter((footerTui: TuiLike, theme: ThemeLike) => {
       tui = footerTui;
       return {
         render(width: number): string[] {
+          // Pi's stock footer (folder, session, model, context usage) is
+          // replaced by setFooter, so the active model must live here or an
+          // opencode default shows nowhere.
+          const modelLabel = theme.fg("muted", `  ·  ${activeModelId(sessionCtx)}`);
           // Every path ends with the exit hint. Students asked how to quit,
           // and the footer is the one line that is always on screen.
           // (ctrl+c clears the editor; pressed twice, or on an empty editor
@@ -151,12 +168,12 @@ export default function sparkFooter(pi: ExtensionAPI) {
           // Nothing to say off Spark, or no token: say so rather than draw a bar
           // full of empties that reads as "you have spent nothing".
           if (!token()) {
-            return [theme.fg("dim", "  not on Spark — /login, or use --model opencode-go/…"), hints];
+            return [theme.fg("dim", "  not on Spark") + modelLabel, hints];
           }
-          if (!quota) return [theme.fg("dim", "  Spark quota unavailable"), hints];
+          if (!quota) return [theme.fg("dim", "  Spark quota unavailable") + modelLabel, hints];
 
           if (quota.aiEnabled === false) {
-            return [theme.fg("error", "  AI disabled for your account — ask your teacher"), hints];
+            return [theme.fg("error", "  AI disabled for your account — ask your teacher") + modelLabel, hints];
           }
 
           // No ceiling: no meter and no percentage, because a full bar implies a
@@ -164,7 +181,7 @@ export default function sparkFooter(pi: ExtensionAPI) {
           if (isUnlimited(quota)) {
             return [
               theme.fg("dim", `  ${Math.round(quota.tokensUsed / 1000)}k used today`) +
-                theme.fg("muted", "  ·  unlimited"),
+                theme.fg("muted", "  ·  unlimited") + modelLabel,
               hints,
             ];
           }
@@ -174,7 +191,7 @@ export default function sparkFooter(pi: ExtensionAPI) {
           if (quota.dailyTokenLimit === null || quota.dailyTokenLimit === undefined) {
             return [
               theme.fg("dim", `  ${Math.round(quota.tokensUsed / 1000)}k used today`) +
-                theme.fg("muted", "  ·  no daily token cap"),
+                theme.fg("muted", "  ·  no daily token cap") + modelLabel,
               hints,
             ];
           }
@@ -186,13 +203,13 @@ export default function sparkFooter(pi: ExtensionAPI) {
 
           // Narrow terminals keep the bar and the percentage only; the absolute
           // token counts are the part that can be dropped.
-          if (width < 52) return [`  ${bar} ${percent}`, hints];
+          if (width < 52) return [`  ${bar} ${percent}` + modelLabel, hints];
 
           const numbers = theme.fg(
             "dim",
             `${Math.round(tokensUsed / 1000)}k / ${Math.round(limit / 1000)}k today`,
           );
-          return [`  ${bar} ${percent}  ${numbers}`, hints];
+          return [`  ${bar} ${percent}  ${numbers}` + modelLabel, hints];
         },
       };
     });
@@ -219,4 +236,4 @@ export default function sparkFooter(pi: ExtensionAPI) {
 }
 
 // Exported for tests.
-export const _internals = { format, isUnlimited, meter, pct };
+export const _internals = { format, isUnlimited, meter, pct, activeModelId };
