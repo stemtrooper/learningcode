@@ -101,6 +101,32 @@ export default function planMode(pi: ExtensionAPI) {
 
 	pi.registerCommand("todo", {
 		description: "Manage the plan checklist: /todo add <text> | /todo done <n> | /todo clear",
+		getArgumentCompletions: (argumentPrefix: string) => {
+			const prefix = String(argumentPrefix ?? "");
+			const space = prefix.indexOf(" ");
+			if (space === -1) {
+				return ["add", "done", "clear"]
+					.filter((sub) => sub.startsWith(prefix.toLowerCase()))
+					.map((sub) => ({
+						value: sub,
+						label: sub,
+						description:
+							sub === "add"
+								? "Add a checklist step"
+								: sub === "done"
+									? "Complete a step by number"
+									: "Clear the checklist",
+					}));
+			}
+			const sub = prefix.slice(0, space).toLowerCase();
+			const rest = prefix.slice(space + 1);
+			if (sub === "done") {
+				return todos
+					.filter((t) => !t.completed && String(t.step).startsWith(rest.trim()))
+					.map((t) => ({ value: String(t.step), label: `${t.step}. ${t.text}` }));
+			}
+			return null;
+		},
 		handler: async (args, ctx) => {
 			const text = String(args ?? "").trim();
 			const space = text.indexOf(" ");

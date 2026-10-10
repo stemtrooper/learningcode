@@ -79,7 +79,8 @@ with no extra wiring. `registerShortcut` must degrade gracefully under RPC
 - Progress checklist: plan-mode state tracks steps
   (`{ step, text, completed }[]`, seeded from the model's `Plan:` header on
   `agent_end`, or manually via `/todo add <text>` / `/todo done <n>` /
-  `/todo clear`; `/todos` lists the full checklist). A widget
+  `/todo clear`; `/todos` lists the full checklist, and `/todo`
+  completes subcommands plus open step numbers via `getArgumentCompletions`). A widget
   (`plan-todos`, `aboveEditor`) renders the single current-step row,
   and returns `[]` when narrow (< 100 cols, same pattern as
   the footer's `width < 52` branch), when in Build mode, or when no plan is

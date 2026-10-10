@@ -203,6 +203,53 @@ test("the /todo command manages the checklist", async () => {
 	assert.match(notices.at(-1), /Usage/);
 });
 
+test("the /todo command completes subcommands and step numbers", async () => {
+	const jiti = createJiti(import.meta.url);
+	const mod = await jiti.import("../extensions/plan-mode.ts");
+
+	const handlers = new Map();
+	const commands = new Map();
+	let activeTools = ["read", "bash", "edit", "write", "grep", "find", "ls"];
+	const ctx = {
+		hasUI: true,
+		mode: "tui",
+		ui: {
+			setStatus: () => {},
+			setWidget: () => {},
+			notify: () => {},
+		},
+	};
+	const pi = {
+		on: (event, fn) => handlers.set(event, fn),
+		registerCommand: (name, opts) => commands.set(name, opts),
+		registerShortcut: () => {},
+		getActiveTools: () => [...activeTools],
+		setActiveTools: (names) => {
+			activeTools = [...names];
+		},
+	};
+
+	mod.default(pi);
+	await handlers.get("session_start")({}, ctx);
+	const complete = commands.get("todo").getArgumentCompletions;
+	assert.ok(complete, "/todo offers completions");
+	assert.deepEqual(
+		complete("").map((c) => c.value),
+		["add", "done", "clear"],
+	);
+	assert.deepEqual(complete("d").map((c) => c.value), ["done"]);
+
+	await commands.get("todo").handler("add Survey auth flow", ctx);
+	await commands.get("todo").handler("add Add login page", ctx);
+	await commands.get("todo").handler("done 1", ctx);
+	assert.deepEqual(
+		complete("done ").map((c) => c.value),
+		["2"],
+		"only incomplete steps are suggested",
+	);
+	assert.equal(complete("add "), null, "free text after add");
+});
+
 test("checklist survives into Build and tracks [DONE:n] there", async () => {
 	const jiti = createJiti(import.meta.url);
 	const mod = await jiti.import("../extensions/plan-mode.ts");
