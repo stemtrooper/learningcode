@@ -19,7 +19,8 @@ type ComponentLike = { render(width: number): string[] };
 type TuiLike = { requestRender?(): void; invalidate?(): void };
 type FooterDataLike = { getExtensionStatuses?: () => ReadonlyMap<string, string> };
 type UsageLike = { input?: unknown; output?: unknown; cacheRead?: unknown };
-type EntryLike = { type?: string; provider?: string; model?: string; usage?: UsageLike };
+type MsgLike = { role?: string; provider?: string; model?: string; usage?: UsageLike };
+type EntryLike = { type?: string; provider?: string; model?: string; usage?: UsageLike; message?: MsgLike };
 type CostLike = { input?: unknown; output?: unknown; cacheRead?: unknown };
 type RegistryLike = { find?: (provider: string, modelId: string) => { cost?: CostLike } | undefined };
 type SessionManagerLike = { getEntries?: () => EntryLike[] };
@@ -83,11 +84,14 @@ function format(quota: Quota): string[] {
 }
 
 /**
- * Session spend summed over usage entries. Dollars use each entry's own
- * model catalog price ($/M tokens); cache-read tokens are billed at the
- * cache rate, the rest of input at the input rate (cacheWrite is a subset
- * of input, already counted). dollars is null when no entry has numeric
- * rates — tokens alone must never be mistaken for a price.
+ * Session spend over entries. Usage arrives two ways: standalone `usage`
+ * entries (model-attributed, non-LLM) and, for every turn, on the assistant
+ * message itself (`message` entries, the actual per-turn source). Both are
+ * harvested; the two never describe the same call.
+ * Dollars use each call's own model catalog price ($/M tokens); cache-read
+ * tokens are billed at the cache rate, the rest of input at the input rate
+ * (cacheWrite is a subset of input, already counted). dollars is null when
+ * no call has numeric rates — tokens alone must never be mistaken for a price.
  */
 export function sessionSpend(
 	entries: EntryLike[],
@@ -96,19 +100,27 @@ export function sessionSpend(
 	let tokens = 0;
 	let dollars = 0;
 	let priced = false;
-	for (const entry of entries ?? []) {
-		const usage = entry?.usage;
-		if (!usage) continue;
+	const attribute = (provider: string | undefined, model: string | undefined, usage: UsageLike) => {
 		const input = num(usage.input);
 		const output = num(usage.output);
 		const read = Math.min(num(usage.cacheRead), input);
 		tokens += input + output;
-		const cost = findModel?.(entry.provider, entry.model)?.cost;
+		const cost = findModel?.(provider ?? "", model ?? "")?.cost;
 		const rates = [cost?.input, cost?.output, cost?.cacheRead];
 		if (cost && rates.some((r) => typeof r === "number")) {
 			priced = true;
 			dollars +=
 				((input - read) * num(cost.input) + read * num(cost.cacheRead) + output * num(cost.output)) / 1_000_000;
+		}
+	};
+	for (const entry of entries ?? []) {
+		if (entry?.usage) {
+			attribute(entry.provider, entry.model, entry.usage);
+			continue;
+		}
+		const message = entry?.message;
+		if (message?.role === "assistant" && message.usage) {
+			attribute(message.provider, message.model, message.usage);
 		}
 	}
 	return { tokens, dollars: priced ? dollars : null };

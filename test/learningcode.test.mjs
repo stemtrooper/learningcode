@@ -602,18 +602,18 @@ test("the footer totals session spend and prices it from the catalog", async () 
   const { sessionSpend, shortModelId, spendText } = mod._internals;
 
   const entries = [
-    { type: "message" },
+    { type: "message", message: { role: "assistant", provider: "p", model: "m", usage: { input: 2000, output: 1000 } } },
     { type: "usage", kind: "llm", provider: "p", model: "m", usage: { input: 1000, output: 500, cacheRead: 200 } },
     { type: "usage", kind: "llm", provider: "p", model: "unpriced", usage: { input: 100, output: 0 } },
   ];
   const find = (_provider, id) =>
     id === "m" ? { cost: { input: 1, output: 4, cacheRead: 0.1 } } : undefined;
   const spend = sessionSpend(entries, find);
-  assert.equal(spend.tokens, 1600, "input + output across usage entries");
+  assert.equal(spend.tokens, 4600, "assistant messages are the per-turn source");
   // (800 x $1 + 200 x $0.10 + 500 x $4) / 1M.
-  assert.ok(Math.abs(spend.dollars - 0.00282) < 1e-9);
+  assert.ok(Math.abs(spend.dollars - 0.00882) < 1e-9);
   assert.equal(sessionSpend(entries).dollars, null, "tokens alone are never a price");
-  assert.equal(sessionSpend(entries).tokens, 1600);
+  assert.equal(sessionSpend(entries).tokens, 4600);
 
   assert.equal(spendText({ tokens: 0, dollars: null }), "", "nothing spent, nothing shown");
   assert.equal(spendText({ tokens: 1600, dollars: null }), "sess 2k");
