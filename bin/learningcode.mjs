@@ -21,7 +21,7 @@ import {
 	looksLikeTokenHarborKey,
 } from "../lib/tokenharbor.mjs";
 import { ensureSparkProvider, modelsPath, retargetProvider } from "../lib/models.mjs";
-import { ensureQuietStartup, persistedModelPrefs, seedModelPrefs } from "../lib/settings.mjs";
+import { ensureQuietStartup, ensureThinkingCycleKey, persistedModelPrefs, seedModelPrefs } from "../lib/settings.mjs";
 import { ensureThemes, preferredTheme } from "../lib/themes.mjs";
 import { hasToken, looksLikeToken, promptSecret, resolveToken, writeCachedToken } from "../lib/token.mjs";
 import { agentEnvironment, forcedPiArgs, resolvePiEntry } from "../lib/pi.mjs";
@@ -392,6 +392,7 @@ async function main() {
 	await ensureTokenHarborProvider(dir).catch(() => {});
 	await ensureThemes(dir);
 	await ensureQuietStartup(dir);
+	await ensureThinkingCycleKey(dir).catch(() => {});
 
 	// `--login` forces a fresh paste even when a token is already cached.
 	const requestedModel = readModel(toPi);
