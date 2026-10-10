@@ -105,27 +105,11 @@ export default function (pi: ExtensionAPI) {
   let widget: CatWidget | null = null;
   let timer: ReturnType<typeof setInterval> | null = null;
 
+  // Single working indicator: the footer owns it (extensions/footer.ts).
+  // Pi's built-in working row above the editor is hidden so "working"
+  // never appears twice. The cat widget is gone for the same reason.
   pi.on("session_start", async (_e, ctx: ExtensionContext) => {
-    ctx.ui.setWorkingIndicator({ frames: SPIN, intervalMs: 100 });
-  });
-
-  pi.on("agent_start", async (_e, ctx: ExtensionContext) => {
     if (!ctx.hasUI || ctx.mode !== "tui") return;
-    if (timer) clearInterval(timer);
-    widget = null;
-    ctx.ui.setWidget("tiny-cat", (tui, theme) => {
-      widget = new CatWidget(tui, theme as unknown as Theme);
-      return widget;
-    });
-    timer = setInterval(() => widget?.advance(), 220);
+    ctx.ui.setWorkingVisible(false);
   });
-
-  const stop = async (_e: unknown, ctx: ExtensionContext) => {
-    if (timer) clearInterval(timer);
-    timer = null;
-    widget = null;
-    ctx.ui.setWidget("tiny-cat", undefined);
-  };
-  pi.on("agent_settled", stop as never);
-  pi.on("session_shutdown", stop as never);
 }
