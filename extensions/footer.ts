@@ -159,7 +159,7 @@ export default function sparkFooter(pi: ExtensionAPI) {
           // Pi has its own status spinner, but the footer is the TLC-owned
           // surface, so the motion lives here where it cannot be restyled
           // away from the brand.
-          const idleHints = theme.fg("dim", "  ctrl+c exit  ·  esc interrupt");
+          const idleHints = theme.fg("dim", "  ctrl+c exit  ·  esc interrupt  ·  ctrl+p models");
           const hints = working
             ? theme.fg("accent", `  ${SPINNER[frame]} working…`) +
               theme.fg("muted", "  ·  esc to interrupt")
