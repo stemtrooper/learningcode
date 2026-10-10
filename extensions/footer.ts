@@ -17,6 +17,7 @@ type ThemeLike = { fg(token: string, text: string): string };
 type ComponentLike = { render(width: number): string[] };
 /** Just enough of the TUI to ask for a repaint after the quota changes. */
 type TuiLike = { requestRender?(): void; invalidate?(): void };
+type FooterDataLike = { getExtensionStatuses?: () => ReadonlyMap<string, string> };
 
 const baseUrl = () => (process.env.SPARK_BASE_URL || "https://spark.learning.com.my/v1").replace(/\/+$/, "");
 const token = () => process.env.SPARK_API_KEY || "";
@@ -102,6 +103,9 @@ export function activeModelId(ctx: unknown): string {
 	return model.provider ? `${model.provider}/${model.id}` : model.id;
 }
 
+/** Status key the plan-mode extension sets while planning. */
+const STATUS_PLAN_KEY = "plan-mode";
+
 export default function sparkFooter(pi: ExtensionAPI) {
   let quota: Quota | null = null;
   let timer: ReturnType<typeof setInterval> | undefined;
@@ -141,7 +145,7 @@ export default function sparkFooter(pi: ExtensionAPI) {
     };
 
     const sessionCtx = ctx as { model?: { provider?: string; id?: string } | null };
-    ctx.ui.setFooter((footerTui: TuiLike, theme: ThemeLike) => {
+    ctx.ui.setFooter((footerTui: TuiLike, theme: ThemeLike, footerData?: FooterDataLike) => {
       tui = footerTui;
       return {
         render(width: number): string[] {
@@ -149,6 +153,11 @@ export default function sparkFooter(pi: ExtensionAPI) {
           // replaced by setFooter, so the active model must live here or an
           // opencode default shows nowhere.
           const modelLabel = theme.fg("warning", `  ·  ${activeModelId(sessionCtx)}`);
+          // Plan mode sets the `plan-mode` status; presence means PLAN.
+          const inPlan = footerData?.getExtensionStatuses?.().has(STATUS_PLAN_KEY) ?? false;
+          const modeLabel = inPlan
+            ? theme.fg("warning", "  ·  PLAN")
+            : theme.fg("dim", "  ·  build");
           // Every path ends with the exit hint. Students asked how to quit,
           // and the footer is the one line that is always on screen.
           // (ctrl+c clears the editor; pressed twice, or on an empty editor
@@ -159,7 +168,7 @@ export default function sparkFooter(pi: ExtensionAPI) {
           // Pi has its own status spinner, but the footer is the TLC-owned
           // surface, so the motion lives here where it cannot be restyled
           // away from the brand.
-          const idleHints = theme.fg("dim", "  ctrl+c exit  ·  esc interrupt  ·  ctrl+p models  ·  ctrl+shift+e thinking  ·  ctrl+t fold");
+          const idleHints = theme.fg("dim", "  ctrl+c exit  ·  esc interrupt  ·  ctrl+p models  ·  ctrl+shift+e thinking  ·  ctrl+t fold  ·  shift+tab plan");
           const hints = working
             ? theme.fg("accent", `  ${SPINNER[frame]} working…`) +
               theme.fg("muted", "  ·  esc to interrupt")
@@ -168,12 +177,12 @@ export default function sparkFooter(pi: ExtensionAPI) {
           // Nothing to say off Spark, or no token: say so rather than draw a bar
           // full of empties that reads as "you have spent nothing".
           if (!token()) {
-            return [theme.fg("muted", "  not on Spark") + modelLabel, hints];
+            return [theme.fg("muted", "  not on Spark") + modelLabel + modeLabel, hints];
           }
-          if (!quota) return [theme.fg("dim", "  Spark quota unavailable") + modelLabel, hints];
+          if (!quota) return [theme.fg("dim", "  Spark quota unavailable") + modelLabel + modeLabel, hints];
 
           if (quota.aiEnabled === false) {
-            return [theme.fg("error", "  AI disabled for your account — ask your teacher") + modelLabel, hints];
+            return [theme.fg("error", "  AI disabled for your account — ask your teacher") + modelLabel + modeLabel, hints];
           }
 
           // No ceiling: no meter and no percentage, because a full bar implies a
@@ -181,7 +190,7 @@ export default function sparkFooter(pi: ExtensionAPI) {
           if (isUnlimited(quota)) {
             return [
               theme.fg("dim", `  ${Math.round(quota.tokensUsed / 1000)}k used today`) +
-                theme.fg("muted", "  ·  unlimited") + modelLabel,
+                theme.fg("muted", "  ·  unlimited") + modelLabel + modeLabel,
               hints,
             ];
           }
@@ -191,7 +200,7 @@ export default function sparkFooter(pi: ExtensionAPI) {
           if (quota.dailyTokenLimit === null || quota.dailyTokenLimit === undefined) {
             return [
               theme.fg("dim", `  ${Math.round(quota.tokensUsed / 1000)}k used today`) +
-                theme.fg("muted", "  ·  no daily token cap") + modelLabel,
+                theme.fg("muted", "  ·  no daily token cap") + modelLabel + modeLabel,
               hints,
             ];
           }
@@ -203,13 +212,13 @@ export default function sparkFooter(pi: ExtensionAPI) {
 
           // Narrow terminals keep the bar and the percentage only; the absolute
           // token counts are the part that can be dropped.
-          if (width < 52) return [`  ${bar} ${percent}` + modelLabel, hints];
+          if (width < 52) return [`  ${bar} ${percent}` + modelLabel + modeLabel, hints];
 
           const numbers = theme.fg(
             "dim",
             `${Math.round(tokensUsed / 1000)}k / ${Math.round(limit / 1000)}k today`,
           );
-          return [`  ${bar} ${percent}  ${numbers}` + modelLabel, hints];
+          return [`  ${bar} ${percent}  ${numbers}` + modelLabel + modeLabel, hints];
         },
       };
     });
