@@ -7,7 +7,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
  * student is asked; without one (print or remote-less runs) the command is
  * blocked, the same fail-safe Pi's own permission-gate example uses.
  */
-import { destructiveReason } from "../lib/approval.mjs";
+import { destructiveReason, formatApprovalPrompt } from "../lib/approval.mjs";
 
 export default function (pi: ExtensionAPI) {
 	pi.on("tool_call", async (event, ctx) => {
@@ -21,7 +21,10 @@ export default function (pi: ExtensionAPI) {
 			return { block: true, reason: `Blocked: this command ${why}, and there is no one to confirm it.` };
 		}
 
-		const choice = await ctx.ui.select(`This command ${why}:\n\n  ${command}\n\nAllow it?`, ["Yes", "No"]);
+		// The command echo is truncated inside formatApprovalPrompt: a long
+		// command used to push the Yes/No options off screen, leaving a new
+		// user with no visible choice (Enter still accepted Yes).
+		const choice = await ctx.ui.select(formatApprovalPrompt(command, why), ["Yes", "No"]);
 		if (choice !== "Yes") {
 			return { block: true, reason: "Not approved by the student." };
 		}

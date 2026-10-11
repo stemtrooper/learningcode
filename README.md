@@ -442,6 +442,9 @@ often, and a student's install must not change underneath them mid-term.
 
 ## Changelog
 
+* **0.7.3** — longer answers: TLC-Spark output cap 4096 → 8192 tokens
+  (existing installs migrate on next launch); approval prompt truncates
+  long commands so Yes/No stays visible, with an Enter = Yes hint.
 * **0.7.2** — failure UX: quota/seats/startup errors say what died and how to fix it, seat queue position without invented ETAs, `doctor --fix` clears a rejected token cache.
 * **0.7.1** — footer shows session spend (`sess 3k ≈$0.03`, catalog-priced)
   and compacts for narrow screens (short model id, `quota n/a`, trimmed

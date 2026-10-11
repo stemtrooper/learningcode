@@ -63,7 +63,7 @@ test("seeds TLC-Spark with the compat flags Spark requires", async () => {
 	const model = provider.models[0];
 	assert.equal(model.id, "TLC-Spark");
 	assert.equal(model.contextWindow, 32768);
-	assert.equal(model.maxTokens, 4096);
+	assert.equal(model.maxTokens, 8192);
 	// Spark bills chain-of-thought but never forwards it, so thinking is off.
 	assert.equal(model.reasoning, false);
 });
@@ -85,6 +85,31 @@ test("is idempotent and never clobbers student edits", async () => {
 	const after = JSON.parse(await readFile(path, "utf-8"));
 	assert.equal(after.providers["tlc-spark"].baseUrl, "http://localhost:3000/v1");
 	assert.ok(after.providers.ollama, "unrelated providers must survive");
+});
+
+test("stale 4096 output caps migrate to 8192 without clobbering edits", async () => {
+	const dir = await scratch();
+	await ensureSparkProvider(dir);
+
+	// Simulate an install seeded when the cap was 4096, retargeted by hand.
+	const path = modelsPath(dir);
+	const models = JSON.parse(await readFile(path, "utf-8"));
+	models.providers["tlc-spark"].baseUrl = "http://localhost:3000/v1";
+	models.providers["tlc-spark"].models[0].maxTokens = 4096;
+	models.providers["ollama"] = { name: "Ollama", baseUrl: "http://localhost:11434/v1" };
+	await writeFile(path, JSON.stringify(models, null, 2));
+
+	const second = await ensureSparkProvider(dir);
+	assert.equal(second.created, false);
+	assert.equal(second.migrated, true, "stale cap must be raised in place");
+
+	const after = JSON.parse(await readFile(path, "utf-8"));
+	assert.equal(after.providers["tlc-spark"].models[0].maxTokens, 8192);
+	assert.equal(after.providers["tlc-spark"].baseUrl, "http://localhost:3000/v1", "student baseUrl survives");
+	assert.ok(after.providers.ollama, "unrelated providers survive");
+
+	const third = await ensureSparkProvider(dir);
+	assert.equal(third.migrated, false, "an up-to-date install is left alone");
 });
 
 test("--base-url retargets in place", async () => {
