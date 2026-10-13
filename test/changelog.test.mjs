@@ -46,7 +46,9 @@ test("a version with no changelog entry shows nothing rather than a blank box", 
 });
 
 test("the notice tells students the command to type", () => {
-	const text = formatNotice(CHANGELOG[0]);
+	const notice = CHANGELOG.find((item) => item.version === "0.5.7");
+	assert.ok(notice, "the phone entry is still in the changelog");
+	const text = formatNotice(notice);
 	assert.match(text, /learningcode remote/);
 	assert.match(text, /QR code/);
 	assert.match(text, /--resume/);

@@ -384,6 +384,7 @@ to Spark, and no telemetry is sent.
 | `LEARNINGCODE_TOKEN` | supply a token without using the cached file |
 | `LEARNINGCODE_THEME` | `tlc-dark` (default), `tlc-light`, or any Pi theme |
 | `LEARNINGCODE_PI_FLAGS` | extra flags passed to the agent on every launch |
+| `RIVER_API_KEY` | River AI key, or store one with `--login-provider river` |
 
 ```bash
 learningcode --show-config     # show resolved paths and settings
@@ -419,6 +420,17 @@ quota, seat limit or audit trail. `learningcode` deliberately excludes OpenCode
 Zen, which bills per token, so a stale entry cannot silently spend money. It is
 still not something to hand to students.
 
+**River AI.** [River](https://river.ai/) exposes an OpenAI-compatible endpoint
+at `https://api.river.ai/v1`. Sign in once and its models join `/model`:
+
+```bash
+learningcode --login-provider river      # paste an rv_ key
+learningcode --model river/deepseek-ai/DeepSeek-V4.1-Flash
+```
+
+`RIVER_API_KEY` works instead of a stored key, for machines where the
+environment already carries the credential.
+
 **Seat awareness.** Spark enforces one active generation per student, so the
 client runs strictly serially with subagents off. Expect a 429 rather than
 parallel fan-out.
@@ -442,6 +454,10 @@ often, and a student's install must not change underneath them mid-term.
 
 ## Changelog
 
+* **0.7.4** — River AI is a provider you can log in to from learningcode:
+  `learningcode --login-provider river` (your `rv_` key is entered without
+  echo), or set `RIVER_API_KEY`. Its OpenAI-compatible models then appear in
+  `/model` after `/scoped-models`.
 * **0.7.3** — longer answers: TLC-Spark output cap 4096 → 8192 tokens
   (existing installs migrate on next launch); approval prompt truncates
   long commands so Yes/No stays visible, with an Enter = Yes hint.

@@ -20,6 +20,11 @@ import {
 	ensureTokenHarborProvider,
 	looksLikeTokenHarborKey,
 } from "../lib/tokenharbor.mjs";
+import {
+	RIVER_PROVIDER,
+	ensureRiverProvider,
+	looksLikeRiverKey,
+} from "../lib/river.mjs";
 import { ensureSparkProvider, modelsPath, retargetProvider } from "../lib/models.mjs";
 import { ensureQuietStartup, ensureThinkingCycleKey, persistedModelPrefs, seedModelPrefs } from "../lib/settings.mjs";
 import { ensureThemes, preferredTheme } from "../lib/themes.mjs";
@@ -50,6 +55,8 @@ Setup
   --token <tok>      Use this Spark token instead of the cached one
   --base-url <url>   Point TLC-Spark at a different Spark deployment
   --login            Re-enter and cache your Spark token
+  --login-provider <name>
+                     Store a key for another provider: tokenharbor, river
   --show-config      Print resolved paths and settings, then exit
   --no-intro         Skip the first-run guided tour
   -h, --help         Show this help
@@ -71,12 +78,16 @@ Other providers
   learningcode --model opencode-go/glm-5.3-flash
   learningcode --list-models opencode
 
+  learningcode --login-provider river
+  learningcode --model river/deepseek-ai/DeepSeek-V4.1-Flash
+
 Environment
   LEARNINGCODE_DIR            agent directory (default ~/.learningcode/agent)
   LEARNINGCODE_SPARK_BASE_URL default https://spark.learning.com.my/v1
   LEARNINGCODE_TOKEN          Spark token, skips the cached file
   LEARNINGCODE_PI_FLAGS       extra flags appended to every Pi launch
   OPENCODE_API_KEY            auth for the opencode-go / opencode-zen providers
+  RIVER_API_KEY               auth for the river provider (or --login-provider river)
   ${PI_AGENT_DIR_ENV}  set automatically; points Pi at the learningcode agent dir
 
 Remote
@@ -131,13 +142,14 @@ function parseArgs(argv) {
 			continue;
 		}
 
-		// Support --token=value / --base-url=value.
+		// Support --flag=value for our value flags.
 		const eq = arg.indexOf("=");
 		if (arg.startsWith("--") && eq > 0) {
 			const name = arg.slice(0, eq);
 			if (OWN_FLAGS_WITH_VALUE.has(name)) {
 				if (name === "--token") explicitToken = arg.slice(eq + 1);
 				if (name === "--base-url") baseUrl = arg.slice(eq + 1);
+				if (name === "--login-provider") own.loginProvider = arg.slice(eq + 1);
 				continue;
 			}
 		}
@@ -416,6 +428,7 @@ process.stdout.write(await doctorReport({ checkSpark })); if (argv[1] === "--fix
 	}
 	await ensureSparkProvider(dir);
 	await ensureTokenHarborProvider(dir).catch(() => {});
+	await ensureRiverProvider(dir).catch(() => {});
 	await ensureThemes(dir);
 	await ensureQuietStartup(dir);
 	await ensureThinkingCycleKey(dir).catch(() => {});
@@ -514,22 +527,33 @@ process.stdout.write(await doctorReport({ checkSpark })); if (argv[1] === "--fix
 		);
 	}
 
-	// `learningcode --login-provider tokenharbor`: store a provider key so its
-	// models appear in the picker. Only providers with a stored key are shown.
+	// `learningcode --login-provider <name>`: store a provider key so its models
+	// appear in the picker. Only providers with a stored key are shown.
 	if (own.loginProvider) {
-		const provider = own.loginProvider.toLowerCase();
-		if (provider !== TOKENHARBOR_PROVIDER) {
-			fail(`no login set up for "${own.loginProvider}". Available: ${TOKENHARBOR_PROVIDER}`);
+		const provider = own.loginProvider.toLowerCase().replace(/\s+/g, "").replace(/\.ai$/, "").replace(/-/g, "");
+		if (provider === "tokenharbor") {
+			await ensureTokenHarborProvider(dir);
+			process.stdout.write("Get a thk_ key at https://tokenharbor.ai/dashboard/api-keys (a free account works).\n");
+			const key = (await promptSecret("TokenHarbor key (thk_...): ")).trim();
+			if (!looksLikeTokenHarborKey(key)) {
+				fail("that does not look like a TokenHarbor key (they start with thk_). Nothing was saved.");
+			}
+			await saveProviderKey(dir, TOKENHARBOR_PROVIDER, key);
+			process.stdout.write("Saved. TokenHarbor models now appear in /model.\n");
+			return;
 		}
-		await ensureTokenHarborProvider(dir);
-		process.stdout.write("Get a thk_ key at https://tokenharbor.ai/dashboard/api-keys (a free account works).\n");
-		const key = (await promptSecret("TokenHarbor key (thk_...): ")).trim();
-		if (!looksLikeTokenHarborKey(key)) {
-			fail("that does not look like a TokenHarbor key (they start with thk_). Nothing was saved.");
+		if (provider === "river" || provider === "riverai") {
+			await ensureRiverProvider(dir);
+			process.stdout.write("Get an rv_ key at https://console.river.ai/keys (a free account works).\n");
+			const key = (await promptSecret("River key (rv_...): ")).trim();
+			if (!looksLikeRiverKey(key)) {
+				fail("that does not look like a River key (they start with rv_). Nothing was saved.");
+			}
+			await saveProviderKey(dir, RIVER_PROVIDER, key);
+			process.stdout.write("Saved. River models now appear in /model.\n");
+			return;
 		}
-		await saveProviderKey(dir, TOKENHARBOR_PROVIDER, key);
-		process.stdout.write("Saved. TokenHarbor models now appear in /model.\n");
-		return;
+		fail(`no login set up for "${own.loginProvider}". Available: ${TOKENHARBOR_PROVIDER}, ${RIVER_PROVIDER}`);
 	}
 
 	if (own.showConfig) {
