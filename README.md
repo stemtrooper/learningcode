@@ -454,6 +454,9 @@ often, and a student's install must not change underneath them mid-term.
 
 ## Changelog
 
+* **0.7.5** — updated to the Pi 1.2.0 runtime (theme schema validation,
+  `before_agent_start` message-type handling), so themes and Plan mode keep
+  working on the new release.
 * **0.7.4** — River AI is a provider you can log in to from learningcode:
   `learningcode --login-provider river` (your `rv_` key is entered without
   echo), or set `RIVER_API_KEY`. Its OpenAI-compatible models then appear in

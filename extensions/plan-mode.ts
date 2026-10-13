@@ -207,7 +207,10 @@ export default function planMode(pi: ExtensionAPI) {
 		};
 	});
 
-	pi.on("before_agent_start", async () => {
+	pi.on("before_agent_start", async (event) => {
+		// Pi 1.2 fires this for custom runs too; the plan context belongs only
+		// on a student's own prompt, not on a tour/custom turn.
+		if (event.messageType !== "user") return undefined;
 		if (mode !== "plan") return undefined;
 		return {
 			message: {
@@ -216,7 +219,7 @@ export default function planMode(pi: ExtensionAPI) {
 					"[PLAN MODE ACTIVE]\nYou are in plan mode: research the codebase and propose a numbered plan under a \"Plan:\" header. Do NOT edit, write, or run mutating commands — those tools are disabled.",
 				display: false,
 			},
-		} as unknown as void;
+		};
 	});
 
 	// Pull numbered steps out of the model's plan; track [DONE:n] checkoffs.
