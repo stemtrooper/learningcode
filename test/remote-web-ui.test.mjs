@@ -91,3 +91,39 @@ test("the transcript puts you on the right and learningcode on the left", () => 
 	assert.match(html, /\.you\s*\{[^}]*align-items:\s*flex-end/);
 	assert.match(html, /\.agent\s*\{[^}]*align-items:\s*flex-start/);
 });
+
+test("the composer keeps Send while the agent works, so queueing is reachable", () => {
+	// A message sent mid-turn is queued behind the answer rather than refused, so
+	// swapping Send out for Stop hid an action the field was still inviting.
+	const html = remoteWebUi();
+	assert.doesNotMatch(html, /sendBtn\.classList\.toggle\("hide"/, "Send is not swapped away mid-turn");
+	assert.doesNotMatch(html, /#send\.hide/, "and no rule is left hiding it");
+	assert.match(html, /Add a message/, "the field says what a mid-turn message does");
+});
+
+test("a message echoed mid-turn does not cut the streaming answer in two", () => {
+	const html = remoteWebUi();
+	assert.match(html, /var queued = working;/, "message_echo notices a turn is already running");
+	assert.match(html, /if \(!queued\) finishAssistant\(\);/, "and only closes the block when it is not");
+});
+
+test("the two sides are told apart by colour, not only by a 12px label", () => {
+	// Two white paragraphs are not tellable apart on a phone. Each side carries the
+	// colour the terminal theme gives it: the student's words are userMessageText.
+	const html = remoteWebUi();
+	assert.match(html, /\.you \.text\s*\{[^}]*color:\s*var\(--info\)/, "your words take the theme's userMessageText");
+	assert.match(html, /\.agent \.text\s*\{[^}]*color:\s*var\(--text\)/, "the agent's take the theme's text");
+	assert.match(html, /\.you \.text\s*\{[^}]*text-align:\s*right/, "and read as right-aligned, not just sit there");
+});
+
+test("the mid-turn placeholder fits on one line of the field", () => {
+	// The field clips a second line, so a longer sentence is cut off mid-word.
+	const html = remoteWebUi();
+	assert.match(html, /input\.placeholder = "Add a message…"/);
+	assert.doesNotMatch(html, /it runs after this answer/, "the explanation moved to the transcript");
+});
+
+test("a queued message says so where there is room for a sentence", () => {
+	const html = remoteWebUi();
+	assert.match(html, /queued — runs after this answer/);
+});

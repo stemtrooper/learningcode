@@ -12,14 +12,33 @@ import { RemoteBridge } from "../lib/remote/bridge.mjs";
 function fakeAgent() {
 	const listeners = new Set();
 	const uiListeners = new Set();
-	const state = { prompts: [], aborts: [], stopCalls: 0, messages: [{ role: "user", content: "earlier" }] };
+	const state = { prompts: [], behaviors: [], aborts: [], calls: [], pending: [], stopCalls: 0, streaming: false, messages: [{ role: "user", content: "earlier" }] };
 	return {
 		state,
-		prompt: async (text) => {
+		prompt: async (text, streamingBehavior) => {
+			// Pi's own rule (agent-session.js prompt()): a message that arrives while
+			// a turn is already running is refused unless the caller says how to queue
+			// it. Modelled here so a bridge that forgets fails this suite rather than
+			// a student's phone.
+			if (state.streaming && !streamingBehavior) {
+				throw new Error(
+					"Agent is already processing. Specify streamingBehavior ('steer' or 'followUp') to queue the message.",
+				);
+			}
 			state.prompts.push(text);
+			state.behaviors.push(streamingBehavior);
 			return "accepted";
 		},
-		abort: async () => state.aborts.push(true),
+		abort: async () => {
+			state.calls.push("abort");
+			state.aborts.push(true);
+		},
+		clearQueue: async () => {
+			state.calls.push("clearQueue");
+			const cleared = { steering: [], followUp: state.pending };
+			state.pending = [];
+			return cleared;
+		},
 		getMessages: async () => state.messages,
 		stop: async () => {
 			state.stopCalls += 1;
@@ -133,6 +152,86 @@ test("messages typed while the socket is down queue and flush on reconnect", asy
 	assert.equal(bridge.status().queued, 0, "flushed once the socket is back");
 	await new Promise((resolve) => setImmediate(resolve));
 	assert.deepEqual(agent.state.prompts, ["first", "second"]);
+	await bridge.stop();
+});
+
+test("a message typed while the agent is working queues as a follow-up", async () => {
+	const agent = fakeAgent();
+	const socket = fakeSocket();
+	const bridge = new RemoteBridge(bridgeOptions({ agent, socket }));
+	await bridge.start();
+	socket.handlers.open();
+
+	// The agent is already mid-turn, which is what a long resumed conversation
+	// makes likely: the student types the next thought before the answer lands.
+	agent.state.streaming = true;
+	socket.deliver({ protocol: 1, type: "phone_message", text: "and add a note" });
+	await new Promise((resolve) => setImmediate(resolve));
+
+	assert.deepEqual(agent.state.prompts, ["and add a note"]);
+	assert.deepEqual(agent.state.behaviors, ["followUp"], "queued behind the turn, not pushed into it");
+	const errors = socket.json("event").filter((frame) => frame.event?.type === "error");
+	assert.deepEqual(errors, [], "the student never sees a streamingBehaviour error");
+	await bridge.stop();
+});
+
+test("a burst of queued messages all reach the agent, in order", async () => {
+	const agent = fakeAgent();
+	agent.state.streaming = true;
+	const socket = fakeSocket();
+	const bridge = new RemoteBridge(bridgeOptions({ agent, socket }));
+	await bridge.start();
+
+	// Typed on a phone while the socket was down, so they flush in one loop. Only
+	// the first finds an idle agent; the rest arrive mid-turn.
+	socket.handlers.close();
+	bridge.deliverToAgent("first");
+	bridge.deliverToAgent("second");
+	bridge.deliverToAgent("third");
+	socket.readyState = 1;
+	socket.handlers.open();
+	await new Promise((resolve) => setImmediate(resolve));
+
+	assert.deepEqual(agent.state.prompts, ["first", "second", "third"]);
+	assert.deepEqual(agent.state.behaviors, ["followUp", "followUp", "followUp"]);
+	assert.equal(bridge.status().queued, 0);
+	await bridge.stop();
+});
+
+test("stopping drops what was queued behind the turn, and says so", async () => {
+	const agent = fakeAgent();
+	agent.state.pending = ["and add a note"];
+	const socket = fakeSocket();
+	const bridge = new RemoteBridge(bridgeOptions({ agent, socket }));
+	await bridge.start();
+	socket.handlers.open();
+
+	socket.deliver({ type: "control", action: "abort" });
+	await new Promise((resolve) => setImmediate(resolve));
+
+	// Pi's abort() leaves a queued follow-up that never runs and is never
+	// reported, so the message the phone already echoed would sit in the
+	// transcript unanswered for good.
+	assert.deepEqual(agent.state.calls, ["abort", "clearQueue"], "cleared after the abort, not before");
+	assert.deepEqual(agent.state.pending, [], "nothing is left stranded in Pi's queue");
+	const note = socket.json("event").at(-1);
+	assert.equal(note.event.type, "note");
+	assert.match(note.event.text, /1 queued message cancelled/);
+	await bridge.stop();
+});
+
+test("stopping with an empty queue says nothing extra", async () => {
+	const agent = fakeAgent();
+	const socket = fakeSocket();
+	const bridge = new RemoteBridge(bridgeOptions({ agent, socket }));
+	await bridge.start();
+	socket.handlers.open();
+
+	socket.deliver({ type: "control", action: "abort" });
+	await new Promise((resolve) => setImmediate(resolve));
+
+	assert.deepEqual(agent.state.calls, ["abort", "clearQueue"]);
+	assert.deepEqual(socket.json("event"), [], "no note when there was nothing to cancel");
 	await bridge.stop();
 });
 

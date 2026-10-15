@@ -465,6 +465,10 @@ often, and a student's install must not change underneath them mid-term.
 
 ## Changelog
 
+* **0.7.7** — remote fixes: a message typed on the phone while the agent is still
+  answering is queued behind that answer instead of failing with a
+  `streamingBehaviour` error; **Stop** cancels what was queued and says how much
+  went with it; and the phone colours your messages apart from the agent's.
 * **0.7.6** — ExpLabs is a provider you can log in to from learningcode:
   `learningcode --login-provider explabs` (your key is entered without echo),
   or set `EXPLABS_API_KEY`. Its OpenAI-compatible models then appear in
