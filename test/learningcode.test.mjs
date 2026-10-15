@@ -611,12 +611,23 @@ test("the footer swaps its hint line for a working indicator while the agent run
 
   await handlers.get("agent_start")();
   const working = component.render(80).join("");
-  assert.match(working, /working…/, "motion plus a label while the agent runs");
+  assert.match(working, /Building Your Project/, "building label while the agent runs");
   assert.match(working, /esc to interrupt/);
   assert.doesNotMatch(working, /ctrl\+c/, "the exit hint steps aside while working");
+  assert.match(working, /⠋|⠙|⠹|⠸|⠼|⠴|⠦|⠧|⠇|⠏/, "spinner frame while working");
 
   await handlers.get("agent_end")();
   assert.match(component.render(80).join(""), /ctrl\+c.*exit/, "hints return when done");
+
+  // Planning mode shows its own label even without the agent running.
+  const planningComp = footerFactory(
+    {},
+    { fg: (_t, text) => text },
+    { getExtensionStatuses: () => new Map([["plan-mode", "plan 0/3"]]) },
+  );
+  const planning = planningComp.render(80).join("");
+  assert.match(planning, /Planning Your Work/, "planning label while plan mode is active");
+  assert.doesNotMatch(planning, /esc to interrupt/, "no interrupt hint while planning");
 
   await handlers.get("session_shutdown")();
 });

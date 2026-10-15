@@ -35,6 +35,9 @@ const POLL_MS = 120_000;
 const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const SPIN_MS = 120;
 
+/** Blue → green → cyan, one step per spinner tick. */
+const COLOR_CYCLE = ["accent", "green", "info"];
+
 type Quota = {
   tokensUsed: number;
   /** null means no daily cap, which is not the same as a cap of zero. */
@@ -176,6 +179,7 @@ export default function sparkFooter(pi: ExtensionAPI) {
   let spinTimer: ReturnType<typeof setInterval> | undefined;
   let working = false;
   let frame = 0;
+  let colorIndex = 0;
   let tui: TuiLike | undefined;
   let spend = { tokens: 0, dollars: null as number | null };
   let sessionRefs = {} as {
@@ -200,18 +204,6 @@ export default function sparkFooter(pi: ExtensionAPI) {
 
   const setWorking = (on: boolean) => {
     working = on;
-    if (on) {
-      if (!spinTimer) {
-        spinTimer = setInterval(() => {
-          frame = (frame + 1) % SPINNER.length;
-          repaint();
-        }, SPIN_MS);
-        spinTimer.unref?.();
-      }
-    } else if (spinTimer) {
-      clearInterval(spinTimer);
-      spinTimer = undefined;
-    }
     repaint();
   };
 
@@ -241,6 +233,28 @@ export default function sparkFooter(pi: ExtensionAPI) {
           // and where am I" — bar, percent, mode. Model, counts and spend
           // return at 52+; the full model id at 70+.
           const narrow = width < 52;
+          const planStatus = footerData?.getExtensionStatuses?.().get(STATUS_PLAN_KEY);
+          const isPlanning = planStatus != null && planStatus.startsWith("plan");
+          const active = working || isPlanning;
+
+          // Keep the spinner + blue→green→cyan color cycle running while work
+          // or planning is active.
+          if (active) {
+            if (!spinTimer) {
+              spinTimer = setInterval(() => {
+                frame = (frame + 1) % SPINNER.length;
+                colorIndex = (colorIndex + 1) % COLOR_CYCLE.length;
+                repaint();
+              }, SPIN_MS);
+              spinTimer.unref?.();
+            }
+          } else if (spinTimer) {
+            clearInterval(spinTimer);
+            spinTimer = undefined;
+            frame = 0;
+            colorIndex = 0;
+          }
+
           // Pi's stock footer (folder, session, model, context usage) is
           // replaced by setFooter, so the active model must live here or an
           // opencode default shows nowhere.
@@ -249,7 +263,6 @@ export default function sparkFooter(pi: ExtensionAPI) {
           const maybeModel = narrow ? "" : modelLabel;
           // Plan mode sets the `plan-mode` status ("plan" or "plan done/total");
           // Build mode keeps "build done/total" while a checklist is active.
-          const planStatus = footerData?.getExtensionStatuses?.().get(STATUS_PLAN_KEY);
           const planMatch = planStatus?.match(/plan\s+(\d+)\/(\d+)/);
           const planCount = planMatch?.slice(1, 3).join("/");
           const planAllDone = planMatch != null && planMatch[1] === planMatch[2];
@@ -278,9 +291,13 @@ export default function sparkFooter(pi: ExtensionAPI) {
               ? "  ctrl+c exit  ·  esc interrupt"
               : "  ctrl+c exit  ·  esc interrupt  ·  ctrl+p models  ·  ctrl+shift+e thinking  ·  ctrl+t fold  ·  shift+tab plan",
           );
-          const hints = working
-            ? theme.fg("accent", `  ${SPINNER[frame]} working…`) +
-              theme.fg("muted", "  ·  esc to interrupt")
+          const statusText = working ? "Building Your Project" : "Planning Your Work";
+          const hints = active
+            ? theme.fg(
+                COLOR_CYCLE[colorIndex],
+                `  ${SPINNER[frame]} ${statusText}` +
+                  (working ? theme.fg("muted", "  ·  esc to interrupt") : "")
+              )
             : idleHints;
 
           const spendLabel = spendText(spend);
