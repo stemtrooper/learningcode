@@ -386,6 +386,7 @@ to Spark, and no telemetry is sent.
 | `LEARNINGCODE_PI_FLAGS` | extra flags passed to the agent on every launch |
 | `RIVER_API_KEY` | River AI key, or store one with `--login-provider river` |
 | `EXPLABS_API_KEY` | ExpLabs key, or store one with `--login-provider explabs` |
+| `COMMANDCODE_API_KEY` | CommandCode key, or store one with `--login-provider commandcode` |
 
 ```bash
 learningcode --show-config     # show resolved paths and settings
@@ -442,6 +443,21 @@ learningcode --model explabs/glm-5.3-flash
 
 `EXPLABS_API_KEY` works instead of a stored key.
 
+**CommandCode.** [CommandCode](https://commandcode.ai/) serves its catalogue at
+`https://api.commandcode.ai/provider/v1`, mostly over OpenAI Chat Completions
+with its Claude line on Anthropic Messages. About ninety models join `/model`
+once a key is stored — from inside learningcode with `/login` (*Sign in with an
+API key*, then CommandCode), or from the shell:
+
+```bash
+learningcode --login-provider commandcode   # paste a key from commandcode.ai/settings/keys
+learningcode --model commandcode/claude-sonnet-5-5
+learningcode --model commandcode/deepseek/deepseek-v4-pro
+```
+
+`COMMANDCODE_API_KEY` works instead of a stored key. Every plan except the free
+Go tier has API access.
+
 **Seat awareness.** Spark enforces one active generation per student, so the
 client runs strictly serially with subagents off. Expect a 429 rather than
 parallel fan-out.
@@ -465,6 +481,10 @@ often, and a student's install must not change underneath them mid-term.
 
 ## Changelog
 
+* **0.7.8** — CommandCode is a provider you can log in to from learningcode:
+  `learningcode --login-provider commandcode` (your key is entered without echo),
+  or `/login` inside learningcode. Its ~90 OpenAI- and Anthropic-compatible
+  models then appear in `/model` after `/scoped-models`.
 * **0.7.7** — remote fixes: a message typed on the phone while the agent is still
   answering is queued behind that answer instead of failing with a
   `streamingBehaviour` error; **Stop** cancels what was queued and says how much

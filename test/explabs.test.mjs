@@ -142,7 +142,7 @@ test("a bad key is refused and nothing is saved", async () => {
 test("an unknown provider names every provider that is available", async () => {
 	const unknown = loginWith(["--login-provider", "notaprovider"], "", await scratch());
 	assert.notEqual(unknown.status, 0);
-	assert.match(unknown.stderr, /Available: tokenharbor, river, explabs/);
+	assert.match(unknown.stderr, /Available: tokenharbor, river, explabs, commandcode/);
 });
 
 test("the TokenHarbor login still works alongside it", async () => {

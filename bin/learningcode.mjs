@@ -30,6 +30,11 @@ import {
 	ensureExplabsProvider,
 	looksLikeExplabsKey,
 } from "../lib/explabs.mjs";
+import {
+	COMMANDCODE_PROVIDER,
+	ensureCommandCodeProvider,
+	looksLikeCommandCodeKey,
+} from "../lib/commandcode.mjs";
 import { ensureSparkProvider, modelsPath, retargetProvider } from "../lib/models.mjs";
 import { ensureQuietStartup, ensureThinkingCycleKey, persistedModelPrefs, seedModelPrefs } from "../lib/settings.mjs";
 import { ensureThemes, preferredTheme } from "../lib/themes.mjs";
@@ -62,7 +67,7 @@ Setup
   --login            Re-enter and cache your Spark token
   --login-provider <name>
                      Store a key for another provider: tokenharbor, river,
-                     explabs
+                     explabs, commandcode
   --show-config      Print resolved paths and settings, then exit
   --no-intro         Skip the first-run guided tour
   -h, --help         Show this help
@@ -84,11 +89,17 @@ Other providers
   learningcode --model opencode-go/glm-5.3-flash
   learningcode --list-models opencode
 
+  Any configured provider can also be set up from inside learningcode:
+  /login, then "Sign in with an API key", then pick it from the list.
+
   learningcode --login-provider river
   learningcode --model river/deepseek-ai/DeepSeek-V4.1-Flash
 
   learningcode --login-provider explabs
   learningcode --model explabs/glm-5.3-flash
+
+  learningcode --login-provider commandcode
+  learningcode --model commandcode/claude-sonnet-5-5
 
 Environment
   LEARNINGCODE_DIR            agent directory (default ~/.learningcode/agent)
@@ -98,6 +109,7 @@ Environment
   OPENCODE_API_KEY            auth for the opencode-go / opencode-zen providers
   RIVER_API_KEY               auth for the river provider (or --login-provider river)
   EXPLABS_API_KEY             auth for the explabs provider (or --login-provider explabs)
+  COMMANDCODE_API_KEY         auth for the commandcode provider (or --login-provider commandcode)
   ${PI_AGENT_DIR_ENV}  set automatically; points Pi at the learningcode agent dir
 
 Remote
@@ -440,6 +452,7 @@ process.stdout.write(await doctorReport({ checkSpark })); if (argv[1] === "--fix
 	await ensureTokenHarborProvider(dir).catch(() => {});
 	await ensureRiverProvider(dir).catch(() => {});
 	await ensureExplabsProvider(dir).catch(() => {});
+	await ensureCommandCodeProvider(dir).catch(() => {});
 	await ensureThemes(dir);
 	await ensureQuietStartup(dir);
 	await ensureThinkingCycleKey(dir).catch(() => {});
@@ -481,7 +494,18 @@ process.stdout.write(await doctorReport({ checkSpark })); if (argv[1] === "--fix
 			process.stdout.write("Saved. ExpLabs models now appear in /model.\n");
 			return;
 		}
-		fail(`no login set up for "${own.loginProvider}". Available: ${TOKENHARBOR_PROVIDER}, ${RIVER_PROVIDER}, ${EXPLABS_PROVIDER}`);
+		if (provider === "commandcode") {
+			await ensureCommandCodeProvider(dir);
+			process.stdout.write("Get a CommandCode key at https://commandcode.ai/settings/keys (a paid plan; every plan but Go has API access).\n");
+			const key = (await promptSecret("CommandCode key: ")).trim();
+			if (!looksLikeCommandCodeKey(key)) {
+				fail("that does not look like a CommandCode key. Nothing was saved.");
+			}
+			await saveProviderKey(dir, COMMANDCODE_PROVIDER, key);
+			process.stdout.write("Saved. CommandCode models now appear in /model.\n");
+			return;
+		}
+		fail(`no login set up for "${own.loginProvider}". Available: ${TOKENHARBOR_PROVIDER}, ${RIVER_PROVIDER}, ${EXPLABS_PROVIDER}, ${COMMANDCODE_PROVIDER}`);
 	}
 
 	// `--login` forces a fresh paste even when a token is already cached.
