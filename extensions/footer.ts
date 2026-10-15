@@ -36,7 +36,7 @@ const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", 
 const SPIN_MS = 120;
 
 /** Blue → green → cyan, one step per spinner tick. */
-const COLOR_CYCLE = ["accent", "green", "info"];
+const COLOR_CYCLE = ["accent", "success", "info"];
 
 type Quota = {
   tokensUsed: number;
