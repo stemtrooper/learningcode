@@ -35,8 +35,28 @@ const POLL_MS = 120_000;
 const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const SPIN_MS = 120;
 
-/** Blue → green → cyan, one step per spinner tick. */
-const COLOR_CYCLE = ["accent", "success", "info"];
+/**
+ * Blue → green → cyan, one step per spinner tick.
+ *
+ * These are theme *color keys*, not the `vars` they resolve to. Pi's theme
+ * schema has no blue/green/cyan keys, and `theme.fg()` throws on anything that
+ * is not a key — so passing a var name such as "green" or "info" takes down the
+ * whole render loop. In the bundled TLC themes `accent` is the blue, `success`
+ * the green, and `mdCode` the cyan (`info`).
+ *
+ * `safeFg` also guards the lookup, so an unusual or partial theme degrades to
+ * uncoloured text instead of crashing the agent.
+ */
+const COLOR_CYCLE = ["accent", "success", "mdCode"];
+
+/** `theme.fg()` that never throws — an unknown token falls back to plain text. */
+function safeFg(theme: ThemeLike, token: string, text: string): string {
+  try {
+    return theme.fg(token, text);
+  } catch {
+    return text;
+  }
+}
 
 type Quota = {
   tokensUsed: number;
@@ -293,7 +313,8 @@ export default function sparkFooter(pi: ExtensionAPI) {
           );
           const statusText = working ? "Building Your Project" : "Planning Your Work";
           const hints = active
-            ? theme.fg(
+            ? safeFg(
+                theme,
                 COLOR_CYCLE[colorIndex],
                 `  ${SPINNER[frame]} ${statusText}` +
                   (working ? theme.fg("muted", "  ·  esc to interrupt") : "")
@@ -377,4 +398,15 @@ export default function sparkFooter(pi: ExtensionAPI) {
 }
 
 // Exported for tests.
-export const _internals = { format, isUnlimited, meter, pct, activeModelId, sessionSpend, shortModelId, spendText };
+export const _internals = {
+  format,
+  isUnlimited,
+  meter,
+  pct,
+  activeModelId,
+  sessionSpend,
+  shortModelId,
+  spendText,
+  COLOR_CYCLE,
+  safeFg,
+};

@@ -519,6 +519,32 @@ test("both shipped themes satisfy Pi's colour schema", async () => {
   assert.equal(light.vars.accent, "#007aff", "the phone page accent on light backgrounds");
 });
 
+test("the footer's colour cycle only names real theme tokens", async () => {
+  // Regression: the cycle once used var names ("green", then "info"), which
+  // theme.fg() rejects. A plain `theme.fg()` call inside render threw on every
+  // frame and crashed Pi with "Unknown theme color". Every cycle token must be
+  // a colour key Pi's schema defines.
+  const jiti = createJiti(import.meta.url);
+  const footer = await jiti.import("../extensions/footer.ts");
+
+  for (const token of footer._internals.COLOR_CYCLE) {
+    assert.ok(
+      PI_REQUIRED_COLOUR_TOKENS.includes(token),
+      `footer colour cycle token "${token}" is not a Pi theme colour key`,
+    );
+  }
+
+  // And the guard: an unknown token degrades to plain text instead of throwing.
+  const theme = {
+    fg(token, text) {
+      if (token !== "accent") throw new Error(`Unknown theme color: ${token}`);
+      return `\u001b[34m${text}\u001b[0m`;
+    },
+  };
+  assert.equal(footer._internals.safeFg(theme, "nonexistent", "hi"), "hi");
+  assert.match(footer._internals.safeFg(theme, "accent", "hi"), /hi/);
+});
+
 test("unlimited and no-daily-cap accounts are not rendered as zero allowance", async () => {
   const jiti = createJiti(import.meta.url);
   const footer = await jiti.import("../extensions/footer.ts");
