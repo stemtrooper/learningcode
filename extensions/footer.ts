@@ -13,7 +13,11 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
  * to the thing the student is waiting on for no new information.
  */
 
-type ThemeLike = { fg(token: string, text: string): string };
+type ThemeLike = {
+  fg(token: string, text: string): string;
+  /** Present on Pi's real theme; turns text into reverse video for the badge. */
+  inverse?(text: string): string;
+};
 type ComponentLike = { render(width: number): string[] };
 /** Just enough of the TUI to ask for a repaint after the quota changes. */
 type TuiLike = { requestRender?(): void; invalidate?(): void };
@@ -56,6 +60,22 @@ function safeFg(theme: ThemeLike, token: string, text: string): string {
   } catch {
     return text;
   }
+}
+
+/**
+ * A solid badge: the label is drawn as reverse video, so the cycle colour fills
+ * the block and the text reads as negative space (it takes the terminal
+ * background). This is how the status gets a filled box without a dedicated
+ * background token — Pi's schema has no blue/green/cyan background slots, and a
+ * `bg()` token would drag in one of the grey surfaces instead.
+ *
+ * Falls back to the raw SGR reverse attribute when the theme does not expose
+ * `inverse()`, so a minimal theme (and the tests) still get the box.
+ */
+function inverseBox(theme: ThemeLike, token: string, text: string): string {
+  const colored = safeFg(theme, token, text);
+  if (typeof theme.inverse === "function") return theme.inverse(colored);
+  return `\x1b[7m${colored}\x1b[27m`;
 }
 
 type Quota = {
@@ -305,6 +325,10 @@ export default function sparkFooter(pi: ExtensionAPI) {
           // Pi has its own status spinner, but the footer is the TLC-owned
           // surface, so the motion lives here where it cannot be restyled
           // away from the brand.
+          //
+          // The status is drawn as a filled badge — a box in the cycling
+          // colour with the label punched out (see `inverseBox`). The box
+          // colour steps through blue → green → cyan on the spinner tick.
           const idleHints = theme.fg(
             "dim",
             narrow
@@ -313,12 +337,8 @@ export default function sparkFooter(pi: ExtensionAPI) {
           );
           const statusText = working ? "Building Your Project" : "Planning Your Work";
           const hints = active
-            ? safeFg(
-                theme,
-                COLOR_CYCLE[colorIndex],
-                `  ${SPINNER[frame]} ${statusText}` +
-                  (working ? theme.fg("muted", "  ·  esc to interrupt") : "")
-              )
+            ? inverseBox(theme, COLOR_CYCLE[colorIndex], ` ${SPINNER[frame]} ${statusText} `) +
+              (working ? theme.fg("muted", "  ·  esc to interrupt") : "")
             : idleHints;
 
           const spendLabel = spendText(spend);
@@ -409,4 +429,5 @@ export const _internals = {
   spendText,
   COLOR_CYCLE,
   safeFg,
+  inverseBox,
 };

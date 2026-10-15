@@ -655,7 +655,42 @@ test("the footer swaps its hint line for a working indicator while the agent run
   assert.match(planning, /Planning Your Work/, "planning label while plan mode is active");
   assert.doesNotMatch(planning, /esc to interrupt/, "no interrupt hint while planning");
 
+  // The status is an inverted badge: reverse video fills the box and punches
+  // the label out. The minimal test theme has no inverse(), so the raw SGR
+  // attribute is the fallback path here.
+  assert.match(working, /\u001b\[7m/, "working status is drawn in reverse video");
+  assert.match(planning, /\u001b\[7m/, "planning status is drawn in reverse video");
+
   await handlers.get("session_shutdown")();
+});
+
+test("the status badge cycles colour and inverts the label", async () => {
+  const jiti = createJiti(import.meta.url);
+  const mod = await jiti.import("../extensions/footer.ts");
+  const { COLOR_CYCLE, inverseBox } = mod._internals;
+
+  // A theme that records the tokens it was asked for and honours inverse().
+  const seen = [];
+  const themed = {
+    fg: (token, text) => {
+      seen.push(token);
+      return `<${token}>${text}</${token}>`;
+    },
+    inverse: (text) => `<inv>${text}</inv>`,
+  };
+  const badged = inverseBox(themed, "accent", " Building Your Project ");
+  assert.match(badged, /<inv>/, "uses theme.inverse() when available");
+  assert.match(badged, /<accent>/, "fills the box with the cycle colour");
+  assert.match(badged, /Building Your Project/, "keeps the label readable");
+
+  // Every cycle step names a real theme token above, and they are distinct so
+  // the box actually changes colour.
+  assert.equal(new Set(COLOR_CYCLE).size, COLOR_CYCLE.length, "cycle colours are distinct");
+
+  // Without inverse(), the raw reverse SGR is the fallback.
+  const plain = { fg: (_t, text) => text };
+  const raw = inverseBox(plain, "accent", " x ");
+  assert.equal(raw, "\u001b[7m x \u001b[27m");
 });
 
 test("the footer totals session spend and prices it from the catalog", async () => {
