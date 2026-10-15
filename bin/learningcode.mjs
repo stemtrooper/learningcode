@@ -25,6 +25,11 @@ import {
 	ensureRiverProvider,
 	looksLikeRiverKey,
 } from "../lib/river.mjs";
+import {
+	EXPLABS_PROVIDER,
+	ensureExplabsProvider,
+	looksLikeExplabsKey,
+} from "../lib/explabs.mjs";
 import { ensureSparkProvider, modelsPath, retargetProvider } from "../lib/models.mjs";
 import { ensureQuietStartup, ensureThinkingCycleKey, persistedModelPrefs, seedModelPrefs } from "../lib/settings.mjs";
 import { ensureThemes, preferredTheme } from "../lib/themes.mjs";
@@ -56,7 +61,8 @@ Setup
   --base-url <url>   Point TLC-Spark at a different Spark deployment
   --login            Re-enter and cache your Spark token
   --login-provider <name>
-                     Store a key for another provider: tokenharbor, river
+                     Store a key for another provider: tokenharbor, river,
+                     explabs
   --show-config      Print resolved paths and settings, then exit
   --no-intro         Skip the first-run guided tour
   -h, --help         Show this help
@@ -81,6 +87,9 @@ Other providers
   learningcode --login-provider river
   learningcode --model river/deepseek-ai/DeepSeek-V4.1-Flash
 
+  learningcode --login-provider explabs
+  learningcode --model explabs/glm-5.3-flash
+
 Environment
   LEARNINGCODE_DIR            agent directory (default ~/.learningcode/agent)
   LEARNINGCODE_SPARK_BASE_URL default https://spark.learning.com.my/v1
@@ -88,6 +97,7 @@ Environment
   LEARNINGCODE_PI_FLAGS       extra flags appended to every Pi launch
   OPENCODE_API_KEY            auth for the opencode-go / opencode-zen providers
   RIVER_API_KEY               auth for the river provider (or --login-provider river)
+  EXPLABS_API_KEY             auth for the explabs provider (or --login-provider explabs)
   ${PI_AGENT_DIR_ENV}  set automatically; points Pi at the learningcode agent dir
 
 Remote
@@ -429,9 +439,50 @@ process.stdout.write(await doctorReport({ checkSpark })); if (argv[1] === "--fix
 	await ensureSparkProvider(dir);
 	await ensureTokenHarborProvider(dir).catch(() => {});
 	await ensureRiverProvider(dir).catch(() => {});
+	await ensureExplabsProvider(dir).catch(() => {});
 	await ensureThemes(dir);
 	await ensureQuietStartup(dir);
 	await ensureThinkingCycleKey(dir).catch(() => {});
+
+	// `learningcode --login-provider <name>`: store a provider key so its models
+	// appear in the picker. Only providers with a stored key are shown.
+	if (own.loginProvider) {
+		const provider = own.loginProvider.toLowerCase().replace(/\s+/g, "").replace(/\.ai$/, "").replace(/-/g, "");
+		if (provider === "tokenharbor") {
+			await ensureTokenHarborProvider(dir);
+			process.stdout.write("Get a thk_ key at https://tokenharbor.ai/dashboard/api-keys (a free account works).\n");
+			const key = (await promptSecret("TokenHarbor key (thk_...): ")).trim();
+			if (!looksLikeTokenHarborKey(key)) {
+				fail("that does not look like a TokenHarbor key (they start with thk_). Nothing was saved.");
+			}
+			await saveProviderKey(dir, TOKENHARBOR_PROVIDER, key);
+			process.stdout.write("Saved. TokenHarbor models now appear in /model.\n");
+			return;
+		}
+		if (provider === "river" || provider === "riverai") {
+			await ensureRiverProvider(dir);
+			process.stdout.write("Get an rv_ key at https://console.river.ai/keys (a free account works).\n");
+			const key = (await promptSecret("River key (rv_...): ")).trim();
+			if (!looksLikeRiverKey(key)) {
+				fail("that does not look like a River key (they start with rv_). Nothing was saved.");
+			}
+			await saveProviderKey(dir, RIVER_PROVIDER, key);
+			process.stdout.write("Saved. River models now appear in /model.\n");
+			return;
+		}
+		if (provider === "explabs") {
+			await ensureExplabsProvider(dir);
+			process.stdout.write("Get an ExpLabs key at https://explabs.ai/dashboard/api-keys\n");
+			const key = (await promptSecret("ExpLabs key: ")).trim();
+			if (!looksLikeExplabsKey(key)) {
+				fail("that does not look like an ExpLabs key. Nothing was saved.");
+			}
+			await saveProviderKey(dir, EXPLABS_PROVIDER, key);
+			process.stdout.write("Saved. ExpLabs models now appear in /model.\n");
+			return;
+		}
+		fail(`no login set up for "${own.loginProvider}". Available: ${TOKENHARBOR_PROVIDER}, ${RIVER_PROVIDER}, ${EXPLABS_PROVIDER}`);
+	}
 
 	// `--login` forces a fresh paste even when a token is already cached.
 	const requestedModel = readModel(toPi);
@@ -525,35 +576,6 @@ process.stdout.write(await doctorReport({ checkSpark })); if (argv[1] === "--fix
 		process.stderr.write(
 			`learningcode: --token only applies to ${PROVIDER_ID}; ignoring it for ${effectiveModel}.\n`,
 		);
-	}
-
-	// `learningcode --login-provider <name>`: store a provider key so its models
-	// appear in the picker. Only providers with a stored key are shown.
-	if (own.loginProvider) {
-		const provider = own.loginProvider.toLowerCase().replace(/\s+/g, "").replace(/\.ai$/, "").replace(/-/g, "");
-		if (provider === "tokenharbor") {
-			await ensureTokenHarborProvider(dir);
-			process.stdout.write("Get a thk_ key at https://tokenharbor.ai/dashboard/api-keys (a free account works).\n");
-			const key = (await promptSecret("TokenHarbor key (thk_...): ")).trim();
-			if (!looksLikeTokenHarborKey(key)) {
-				fail("that does not look like a TokenHarbor key (they start with thk_). Nothing was saved.");
-			}
-			await saveProviderKey(dir, TOKENHARBOR_PROVIDER, key);
-			process.stdout.write("Saved. TokenHarbor models now appear in /model.\n");
-			return;
-		}
-		if (provider === "river" || provider === "riverai") {
-			await ensureRiverProvider(dir);
-			process.stdout.write("Get an rv_ key at https://console.river.ai/keys (a free account works).\n");
-			const key = (await promptSecret("River key (rv_...): ")).trim();
-			if (!looksLikeRiverKey(key)) {
-				fail("that does not look like a River key (they start with rv_). Nothing was saved.");
-			}
-			await saveProviderKey(dir, RIVER_PROVIDER, key);
-			process.stdout.write("Saved. River models now appear in /model.\n");
-			return;
-		}
-		fail(`no login set up for "${own.loginProvider}". Available: ${TOKENHARBOR_PROVIDER}, ${RIVER_PROVIDER}`);
 	}
 
 	if (own.showConfig) {

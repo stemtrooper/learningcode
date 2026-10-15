@@ -385,6 +385,7 @@ to Spark, and no telemetry is sent.
 | `LEARNINGCODE_THEME` | `tlc-dark` (default), `tlc-light`, or any Pi theme |
 | `LEARNINGCODE_PI_FLAGS` | extra flags passed to the agent on every launch |
 | `RIVER_API_KEY` | River AI key, or store one with `--login-provider river` |
+| `EXPLABS_API_KEY` | ExpLabs key, or store one with `--login-provider explabs` |
 
 ```bash
 learningcode --show-config     # show resolved paths and settings
@@ -431,6 +432,16 @@ learningcode --model river/deepseek-ai/DeepSeek-V4.1-Flash
 `RIVER_API_KEY` works instead of a stored key, for machines where the
 environment already carries the credential.
 
+**ExpLabs.** [ExpLabs](https://explabs.ai/) exposes an OpenAI-compatible
+endpoint at `https://explabs.ai/v1`. Log in once and its models join `/model`:
+
+```bash
+learningcode --login-provider explabs    # paste your key
+learningcode --model explabs/glm-5.3-flash
+```
+
+`EXPLABS_API_KEY` works instead of a stored key.
+
 **Seat awareness.** Spark enforces one active generation per student, so the
 client runs strictly serially with subagents off. Expect a 429 rather than
 parallel fan-out.
@@ -454,6 +465,10 @@ often, and a student's install must not change underneath them mid-term.
 
 ## Changelog
 
+* **0.7.6** — ExpLabs is a provider you can log in to from learningcode:
+  `learningcode --login-provider explabs` (your key is entered without echo),
+  or set `EXPLABS_API_KEY`. Its OpenAI-compatible models then appear in
+  `/model` after `/scoped-models`.
 * **0.7.5** — updated to the Pi 1.2.0 runtime (theme schema validation,
   `before_agent_start` message-type handling), so themes and Plan mode keep
   working on the new release.
