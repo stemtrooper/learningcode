@@ -1,7 +1,8 @@
 # LearningCode 0.8 — student-first launch readiness
 
-Status: **in progress — 0.8.x hardened; 0.9.0 resumes the plan checklist
-(workstream 3).** Audience: students,
+Status: **in progress — 0.8.x hardened; 0.9.x has the resume item of
+workstream 3 (checklist restore) and the /undo recovery audit.**
+Audience: students,
 explicitly not teachers or parents. Every item is judged by one
 question: does it make a student's worst day better? If it serves an
 adult's dashboard instead, it belongs in 0.9 or later.
