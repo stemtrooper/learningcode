@@ -166,6 +166,8 @@ async function fetchQuota(): Promise<Quota | null> {
   try {
     const response = await fetch(`${baseUrl()}/me/quota`, {
       headers: { Authorization: `Bearer ${t}` },
+      // Bounded so a stalled Spark socket cannot leave refreshes piling up.
+      signal: AbortSignal.timeout(8000),
     });
     if (!response.ok) return null;
     return (await response.json()) as Quota;

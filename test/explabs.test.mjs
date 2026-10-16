@@ -79,13 +79,23 @@ test("ExpLabs sits beside the other providers without disturbing them", async ()
 });
 
 test("only a plausible key is accepted, judged by shape and never by value", () => {
-	assert.equal(looksLikeExplabsKey("exp_abcdef1234567890"), true);
-	assert.equal(looksLikeExplabsKey("sk-live-abcdef1234567890"), true);
-	assert.equal(looksLikeExplabsKey(" abcdefgh12345678\n"), true, "paste whitespace is trimmed");
-	assert.equal(looksLikeExplabsKey("short"), false);
+	assert.equal(looksLikeExplabsKey(`xpl_${"a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0"}`), true);
+	assert.equal(looksLikeExplabsKey("  xpl_abcdef12345678  "), true, "paste whitespace is trimmed");
+	assert.equal(looksLikeExplabsKey("sk-live-abcdef1234567890"), false, "another provider's key is refused");
+	assert.equal(looksLikeExplabsKey("exp_abcdef1234567890"), false, "a key without the xpl_ prefix is refused");
+	assert.equal(looksLikeExplabsKey("xpl_short"), false, "too short after the prefix");
 	assert.equal(looksLikeExplabsKey("has spaces in it"), false);
 	assert.equal(looksLikeExplabsKey(""), false);
 	assert.equal(looksLikeExplabsKey(undefined), false);
+});
+
+test("the endpoint and catalog are the verified Experiential Labs values", () => {
+	// Verified 2026-10-16 against https://platform.experientiallabs.ai/llms.txt
+	// and the live keyless catalog at api.experientiallabs.ai/api/models.
+	assert.equal(EXPLABS_BASE_URL, "https://api.experientiallabs.ai/v1");
+	assert.ok(!EXPLABS_BASE_URL.includes("explabs.ai/"), "not the dead short host");
+	assert.ok(EXPLABS_MODELS.includes("qwen3.8-27b"), "the real qwen slug");
+	assert.ok(!EXPLABS_MODELS.includes("qwen3.8-max"), "the invented slug is gone");
 });
 
 test("ExpLabs counts as logged in once its key is stored, or its env var is set", async () => {
@@ -114,16 +124,16 @@ test("the picker keeps only ExpLabs models once it is logged in to", async () =>
 
 test("learningcode --login-provider explabs stores the key and lists the provider", async () => {
 	const dir = await scratch();
-	const result = loginWith(["--login-provider", "explabs"], "exp_abcdef1234567890\n", dir);
+	const result = loginWith(["--login-provider", "explabs"], "xpl_abcdef1234567890\n", dir);
 
 	assert.equal(result.status, 0, result.stderr);
-	assert.match(result.stdout, /Get an ExpLabs key at https:\/\/explabs\.ai\//);
+	assert.match(result.stdout, /Get an ExpLabs key at https:\/\/platform\.experientiallabs\.ai\/settings\/api-keys/);
 	assert.match(result.stdout, /Saved\. ExpLabs models now appear in \/model\./);
 	// The Spark token prompt must not block logging in to another provider.
 	assert.doesNotMatch(result.stdout + result.stderr, /Paste your Spark API token/);
 
 	const auth = JSON.parse(await readFile(join(dir, "auth.json"), "utf-8"));
-	assert.equal(auth.explabs.key, "exp_abcdef1234567890");
+	assert.equal(auth.explabs.key, "xpl_abcdef1234567890");
 	const cfg = JSON.parse(await readFile(join(dir, "models.json"), "utf-8"));
 	assert.ok(cfg.providers.explabs, "the provider entry is written by the login too");
 });

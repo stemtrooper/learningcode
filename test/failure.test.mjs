@@ -4,9 +4,12 @@ import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+	fatalMessage,
 	fixStaleToken,
 	isAuthFailure,
+	nextWeeklyReset,
 	quotaErrorLine,
+	quotaResetLine,
 	queuePositionLine,
 	seatsErrorLine,
 	startupFailureLine,
@@ -38,6 +41,35 @@ test("queue position never invents a wait time", () => {
 	assert.match(queuePositionLine({ position: 0 }), /free/);
 	assert.equal(queuePositionLine({ active: 5 }), null, "no position, no fiction");
 	assert.equal(queuePositionLine(null), null);
+});
+
+test("a fatal error is one line for a student, a stack only on request", () => {
+	const boom = new Error("something went sideways");
+	boom.stack = "Error: something went sideways\n    at /home/student/app.mjs:1:1";
+	assert.equal(fatalMessage(boom, {}), "something went sideways");
+	assert.doesNotMatch(fatalMessage(boom, {}), /at \/home\/student/, "no stack trace for a student");
+	assert.match(fatalMessage(boom, { LEARNINGCODE_DEBUG: "1" }), /at \/home\/student/, "the trace is there for a developer");
+	// A thrown string still reads as a sentence, never "[object Object]".
+	assert.equal(fatalMessage("plain refusal", {}), "plain refusal");
+});
+
+test("the weekly reset is Friday 00:00, computed and never in the past", () => {
+	// 2026-10-14 is a Wednesday; the next Friday 00:00 is the 16th.
+	const wed = new Date(2026, 9, 14, 15, 0, 0);
+	const reset = nextWeeklyReset(wed);
+	assert.equal(reset.getDay(), 5, "Friday");
+	assert.equal(reset.getHours(), 0);
+	assert.equal(reset.getMinutes(), 0);
+	assert.equal(reset.getDate(), 16);
+	assert.match(quotaResetLine(wed), /resets Fri 00:00 \(in \d+d \d+h\)/);
+
+	// On Friday itself the next reset is a week away, not this morning's 00:00.
+	const fri = new Date(2026, 9, 16, 9, 0, 0);
+	assert.equal(nextWeeklyReset(fri).getDate(), 23);
+
+	// Under a day it reads in hours/minutes, never a misleading "0d".
+	const thuLate = new Date(2026, 9, 15, 22, 0, 0);
+	assert.match(quotaResetLine(thuLate), /resets Fri 00:00 \(in 2h 0m\)/);
 });
 
 test("startup failures surface dead tokens, stay silent otherwise", () => {

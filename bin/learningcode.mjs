@@ -26,6 +26,7 @@ import {
 	looksLikeRiverKey,
 } from "../lib/river.mjs";
 import {
+	EXPLABS_KEY_PAGE,
 	EXPLABS_PROVIDER,
 	ensureExplabsProvider,
 	looksLikeExplabsKey,
@@ -50,7 +51,7 @@ import {
 import { agentEnvironment, forcedPiArgs, resolvePiEntry } from "../lib/pi.mjs";
 import { remoteStatus, remoteStop, rotateRemote, runRemote, runRemoteServer } from "../lib/remote/index.mjs";
 import { formatNotice, markNoticeShown, pendingNotice } from "../lib/changelog.mjs";
-import { fixStaleToken } from "../lib/failure.mjs";
+import { fatalMessage, fixStaleToken } from "../lib/failure.mjs";
 import { AUTO_INTRO_ENV, NO_INTRO_ENV, hasSeenIntro, shouldAutoIntro } from "../lib/intro.mjs";
 
 const require = createRequire(import.meta.url);
@@ -520,10 +521,10 @@ async function main() {
 		}
 		if (provider === "explabs") {
 			await ensureExplabsProvider(dir);
-			process.stdout.write("Get an ExpLabs key at https://explabs.ai/dashboard/api-keys\n");
-			const key = (await promptSecret("ExpLabs key: ")).trim();
+			process.stdout.write(`Get an ExpLabs key at ${EXPLABS_KEY_PAGE}\n`);
+			const key = (await promptSecret("ExpLabs key (xpl_...): ")).trim();
 			if (!looksLikeExplabsKey(key)) {
-				fail("that does not look like an ExpLabs key. Nothing was saved.");
+				fail("that does not look like an ExpLabs key (they start with xpl_). Nothing was saved.");
 			}
 			await saveProviderKey(dir, EXPLABS_PROVIDER, key);
 			process.stdout.write("Saved. ExpLabs models now appear in /model.\n");
@@ -718,7 +719,7 @@ async function main() {
 }
 
 main().catch((error) => {
-	// Anything the user can act on gets one line. A stack trace is noise for a
-	// student who mistyped a token; keep it for genuine bugs.
-	fail(error instanceof UserError ? error.message : error?.stack || String(error));
+	// A student gets one actionable line; never a stack trace. A developer
+	// asks for the trace with LEARNINGCODE_DEBUG=1 (lib/failure.mjs: fatalMessage).
+	fail(fatalMessage(error));
 });

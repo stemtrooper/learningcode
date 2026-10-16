@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { agentDir } from "../lib/config.mjs";
 import { cachedTokenPrefix } from "../lib/token.mjs";
-import { quotaErrorLine, seatsErrorLine, startupFailureLine, queuePositionLine } from "../lib/failure.mjs";
+import { quotaErrorLine, quotaResetLine, seatsErrorLine, startupFailureLine, queuePositionLine } from "../lib/failure.mjs";
 
 /**
  * Spark-aware status for the learningcode client.
@@ -20,17 +20,30 @@ import { quotaErrorLine, seatsErrorLine, startupFailureLine, queuePositionLine }
 const baseUrl = () => (process.env.SPARK_BASE_URL || "https://spark.learning.com.my/v1").replace(/\/+$/, "");
 const token = () => process.env.SPARK_API_KEY || "";
 
-async function call(path: string): Promise<{ ok: true; body: unknown } | { ok: false; error: string; status?: number }> {
+/**
+ * Spark calls are bounded. On a flaky school network a stalled socket would
+ * otherwise leave `/quota` and `/seats` spinning forever and hold up the
+ * `session_start` check, which reads to a student as "the app is broken".
+ * Injectable so a test can force the timeout without a real 8-second wait.
+ */
+const SPARK_TIMEOUT_MS = 8000;
+
+async function call(
+	path: string,
+	{ fetchImpl = fetch, timeoutMs = SPARK_TIMEOUT_MS }: { fetchImpl?: typeof fetch; timeoutMs?: number } = {},
+): Promise<{ ok: true; body: unknown } | { ok: false; error: string; status?: number }> {
 	const t = token();
 	if (!t) return { ok: false, error: "no Spark token in the environment" };
 	try {
-		const response = await fetch(`${baseUrl()}${path}`, {
+		const response = await fetchImpl(`${baseUrl()}${path}`, {
 			headers: { Authorization: `Bearer ${t}` },
+			signal: AbortSignal.timeout(timeoutMs),
 		});
 		if (!response.ok) return { ok: false, error: `HTTP ${response.status}`, status: response.status };
 		return { ok: true, body: await response.json() };
 	} catch (error) {
-		return { ok: false, error: error instanceof Error ? error.message : "unreachable" };
+		const timedOut = (error as { name?: string })?.name === "TimeoutError";
+		return { ok: false, error: timedOut ? "timed out" : error instanceof Error ? error.message : "unreachable" };
 	}
 }
 
@@ -68,7 +81,7 @@ function quotaLine(body: QuotaBody): string {
 		return [
 			`Spark quota - ${used.toLocaleString()} tokens used today, no daily token cap`,
 			`jobs ${num(body.jobsUsed)}/${num(body.dailyJobLimit)}`,
-			`day ${String(body.day ?? "?")}`,
+			quotaResetLine(),
 			body.aiEnabled === false ? "AI DISABLED for your account - ask your teacher" : "",
 		]
 			.filter(Boolean)
@@ -80,14 +93,14 @@ function quotaLine(body: QuotaBody): string {
 	return [
 		`Spark quota - ${used.toLocaleString()}/${limit.toLocaleString()} tokens${pct}`,
 		`jobs ${num(body.jobsUsed)}/${num(body.dailyJobLimit)}`,
-		`day ${String(body.day ?? "?")}`,
+		quotaResetLine(),
 		body.aiEnabled === false ? "AI DISABLED for your account - ask your teacher" : "",
 	]
 		.filter(Boolean)
 		.join("  |  ");
 }
 
-export const _internals = { quotaLine, isUnlimited, thousands, num };
+export const _internals = { quotaLine, isUnlimited, thousands, num, call };
 
 /**
  * The queue view shape is not guaranteed, so surface the fields we recognise

@@ -433,11 +433,14 @@ learningcode --model river/deepseek-ai/DeepSeek-V4.1-Flash
 `RIVER_API_KEY` works instead of a stored key, for machines where the
 environment already carries the credential.
 
-**ExpLabs.** [ExpLabs](https://explabs.ai/) exposes an OpenAI-compatible
-endpoint at `https://explabs.ai/v1`. Log in once and its models join `/model`:
+**ExpLabs.** [Experiential Labs](https://platform.experientiallabs.ai/) (the
+`explabs` provider) is an OpenAI-compatible gateway; its endpoint is
+`https://api.experientiallabs.ai/v1`. Mint an `xpl_` key at
+[platform.experientiallabs.ai/settings/api-keys](https://platform.experientiallabs.ai/settings/api-keys),
+log in once, and its models join `/model`:
 
 ```bash
-learningcode --login-provider explabs    # paste your key
+learningcode --login-provider explabs    # paste your xpl_ key
 learningcode --model explabs/glm-5.3-flash
 ```
 

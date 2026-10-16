@@ -605,6 +605,33 @@ test("unlimited and no-daily-cap accounts are not rendered as zero allowance", a
   assert.equal(footer._internals.isUnlimited(capped), false);
   assert.match(footer._internals.format(capped)[0], /5%/);
   assert.match(quota._internals.quotaLine(capped), /12,345\/250,000 tokens \(5%\)/);
+  // The window is weekly and resets Friday 00:00, so the line says when.
+  assert.match(quota._internals.quotaLine(capped), /resets Fri 00:00 \(in /);
+});
+
+test("a stalled Spark call times out instead of hanging /quota", async () => {
+  const jiti = createJiti(import.meta.url);
+  const quota = await jiti.import("../extensions/spark-quota.ts");
+  const previous = process.env.SPARK_API_KEY;
+  process.env.SPARK_API_KEY = "spark_live_test";
+  try {
+    // A fetch that settles only when the signal aborts: the timeout is what
+    // ends the wait, exactly like a socket that never answers.
+    const stalled = (_url, options) =>
+      new Promise((_resolve, reject) => {
+        options.signal.addEventListener("abort", () => {
+          const error = new Error("aborted");
+          error.name = "TimeoutError";
+          reject(error);
+        });
+      });
+    const result = await quota._internals.call("/me/quota", { fetchImpl: stalled, timeoutMs: 10 });
+    assert.equal(result.ok, false);
+    assert.match(result.error, /timed out/);
+  } finally {
+    if (previous === undefined) delete process.env.SPARK_API_KEY;
+    else process.env.SPARK_API_KEY = previous;
+  }
 });
 
 test("the footer meter still behaves for capped accounts", async () => {
