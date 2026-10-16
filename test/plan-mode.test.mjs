@@ -473,3 +473,62 @@ test("clearing the checklist leaves nothing to restore", async () => {
 		else process.env.LEARNINGCODE_DIR = saved;
 	}
 });
+
+test("the /plan command runs a guided template, or refuses an unknown one", async () => {
+	const jiti = createJiti(import.meta.url);
+	const mod = await jiti.import("../extensions/plan-mode.ts");
+
+	const handlers = new Map();
+	const commands = new Map();
+	let activeTools = ["read", "bash", "edit", "write", "grep", "find", "ls"];
+	const statuses = new Map();
+	const notices = [];
+	const sent = [];
+	const ctx = {
+		hasUI: true,
+		mode: "tui",
+		ui: {
+			setStatus: (k, v) => (v === undefined ? statuses.delete(k) : statuses.set(k, v)),
+			setWidget: () => {},
+			notify: (m) => notices.push(m),
+		},
+	};
+	const pi = {
+		on: (event, fn) => handlers.set(event, fn),
+		registerCommand: (name, opts) => commands.set(name, opts),
+		registerShortcut: () => {},
+		getActiveTools: () => [...activeTools],
+		setActiveTools: (names) => {
+			activeTools = [...names];
+		},
+		sendUserMessage: (content) => sent.push(content),
+	};
+
+	mod.default(pi);
+	await handlers.get("session_start")({}, ctx);
+
+	// Completions offer the template names, with their summaries.
+	const complete = commands.get("plan").getArgumentCompletions;
+	assert.deepEqual(
+		complete("").map((c) => c.value),
+		["explain-bug", "implement-fn"],
+	);
+	assert.deepEqual(complete("exp").map((c) => c.value), ["explain-bug"]);
+	assert.ok(complete("exp")[0].description, "each template carries a summary");
+	assert.equal(complete("explain-bug "), null, "after the name it is free subject text");
+
+	// An unknown name is refused: nothing is sent, the mode does not move.
+	await commands.get("plan").handler("nope", ctx);
+	assert.match(notices.at(-1), /Unknown plan template/);
+	assert.equal(sent.length, 0);
+	assert.equal(statuses.has("plan-mode"), false, "a typo does not change the mode");
+
+	// A real template enters Plan mode and sends the lesson as a user message.
+	await commands.get("plan").handler("explain-bug login is broken", ctx);
+	assert.equal(statuses.get("plan-mode"), "plan", "switched to Plan mode");
+	assert.ok(!activeTools.includes("edit") && !activeTools.includes("write"), "writers hidden");
+	assert.equal(sent.length, 1);
+	assert.match(sent[0], /login is broken/, "the subject rides along");
+	assert.match(sent[0], /Plan:/, "the prompt asks for the header the checklist parses");
+	assert.match(notices.at(-1), /Plan template "explain-bug"/);
+});

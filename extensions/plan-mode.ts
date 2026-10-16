@@ -10,6 +10,7 @@ import {
 	markCompletedSteps,
 	planToolSet,
 } from "../lib/plan-mode.mjs";
+import { expandTemplate, listTemplates } from "../lib/plan-templates.mjs";
 import { loadPlanTodos, savePlanTodos } from "../lib/plan-store.mjs";
 import { safeFg } from "../lib/theme.mjs";
 
@@ -118,9 +119,46 @@ export default function planMode(pi: ExtensionAPI) {
 	};
 
 	pi.registerCommand("plan", {
-		description: "Toggle Plan / Build mode (Shift+Tab)",
-		handler: async (_args, ctx) => {
-			setMode(mode === "plan" ? "build" : "plan", ctx);
+		description: "Toggle Plan / Build mode (Shift+Tab), or start a guided plan: /plan <template> [about]",
+		getArgumentCompletions: (argumentPrefix) => {
+			const prefix = String(argumentPrefix ?? "");
+			// Only the first token is a template name; after the space it is the
+			// student's own subject text, which is free-form.
+			if (prefix.includes(" ")) return null;
+			return listTemplates()
+				.filter((t) => t.name.startsWith(prefix.trim().toLowerCase()))
+				.map((t) => ({ value: t.name, label: t.name, description: t.summary }));
+		},
+		handler: async (args, ctx) => {
+			const text = String(args ?? "").trim();
+			// Bare /plan keeps its original job: flip between Plan and Build.
+			if (text === "") {
+				setMode(mode === "plan" ? "build" : "plan", ctx);
+				return;
+			}
+			const space = text.indexOf(" ");
+			const name = (space === -1 ? text : text.slice(0, space)).toLowerCase();
+			const subject = space === -1 ? "" : text.slice(space + 1).trim();
+			const prompt = expandTemplate(name, subject);
+			if (!prompt) {
+				const names = listTemplates()
+					.map((t) => t.name)
+					.join(", ");
+				ctx.ui.notify(
+					`Unknown plan template "${name}". Try one of: ${names}. (Or /plan with no name to toggle Plan/Build.)`,
+					"warning",
+				);
+				return;
+			}
+			// A template is a planning aid: enter Plan mode silently (one notice
+			// is enough), then send the lesson as the student's own message. Pi's
+			// turn, the checklist parse, and /approve all follow from there.
+			if (mode !== "plan") setMode("plan", ctx, true);
+			ctx.ui.notify(
+				`Plan template "${name}" — planning now. Run /approve when the plan looks right.`,
+				"info",
+			);
+			pi.sendUserMessage(prompt);
 		},
 	});
 
