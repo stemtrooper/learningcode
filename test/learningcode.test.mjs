@@ -616,10 +616,15 @@ test("a stalled Spark call times out instead of hanging /quota", async () => {
   process.env.SPARK_API_KEY = "spark_live_test";
   try {
     // A fetch that settles only when the signal aborts: the timeout is what
-    // ends the wait, exactly like a socket that never answers.
+    // ends the wait, exactly like a socket that never answers. That socket
+    // keeps a handle on the event loop, and AbortSignal.timeout's timer is
+    // unref'd, so the fake has to hold one too: without it the loop drains,
+    // the timer never fires, and this test hangs instead of timing out.
     const stalled = (_url, options) =>
       new Promise((_resolve, reject) => {
+        const keepalive = setInterval(() => {}, 1000);
         options.signal.addEventListener("abort", () => {
+          clearInterval(keepalive);
           const error = new Error("aborted");
           error.name = "TimeoutError";
           reject(error);
