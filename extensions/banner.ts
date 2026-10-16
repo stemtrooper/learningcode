@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { foregroundAnsi, rgbColor } from "@earendil-works/pi-tui";
+import { folderLabel } from "../lib/folder.mjs";
 import { safeFg } from "../lib/theme.mjs";
 
 /**
@@ -154,11 +155,20 @@ export function createBanner(theme: ThemeLike): HeaderComponent {
  * no header to replace, and starting work in the factory would run for those.
  */
 
-/** Terminal tab title. Just enough of the event context to set it. */
-const TITLE = "learningcode by the learning curve";
+/**
+ * Terminal tab title. The folder leads so several open tabs differ in the part
+ * a narrow tab strip actually shows; the product name trails. Pi itself puts the
+ * session name and cwd in the title, but this replaces it, so the folder has to
+ * be put back here or every tab reads the same.
+ */
+const titleFor = (cwd: string | undefined): string => {
+  const folder = folderLabel(cwd);
+  return folder ? `${folder} · learningcode` : "learningcode";
+};
 type TitleContext = {
   hasUI: boolean;
   mode: string;
+  cwd?: string;
   ui: { setTitle(title: string): void };
 };
 
@@ -176,7 +186,7 @@ export default function learningcodeBanner(pi: ExtensionAPI) {
 
   const applyTitle = (ctx: TitleContext) => {
     try {
-      ctx.ui.setTitle(TITLE);
+      ctx.ui.setTitle(titleFor(ctx.cwd));
     } catch {
       // Cosmetic only: a title failure must never break startup.
     }

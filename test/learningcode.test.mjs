@@ -684,6 +684,35 @@ test("the footer extension installs a footer and stops polling on shutdown", asy
   });
 });
 
+test("the footer shows the working folder, and drops it on narrow terminals", async () => {
+  await withIsolatedSparkEnv(async () => {
+  const jiti = createJiti(import.meta.url);
+  const mod = await jiti.import("../extensions/footer.ts");
+
+  const handlers = new Map();
+  let footerFactory;
+  const ctx = {
+    hasUI: true,
+    mode: "tui",
+    cwd: join(tmpdir(), "homework-3"),
+    ui: { setFooter: (f) => (footerFactory = f) },
+  };
+  mod.default({ on: (event, fn) => handlers.set(event, fn) });
+  await handlers.get("session_start")({}, ctx);
+
+  const theme = { fg: (_t, text) => text };
+  const component = footerFactory({}, theme);
+  assert.match(component.render(80).join(""), /homework-3/, "the folder shows on a wide footer");
+  assert.doesNotMatch(
+    component.render(40).join(""),
+    /homework-3/,
+    "a narrow footer keeps the quota bar and mode, not the folder",
+  );
+
+  await handlers.get("session_shutdown")();
+  });
+});
+
 test("the footer swaps its hint line for a working indicator while the agent runs", async () => {
   const jiti = createJiti(import.meta.url);
   const mod = await jiti.import("../extensions/footer.ts");
@@ -906,17 +935,19 @@ test("the banner brands the terminal tab on every title-rewriting event", async 
   const ctx = {
     hasUI: true,
     mode: "tui",
+    cwd: join(tmpdir(), "homework-3"),
     ui: { setHeader: () => {}, setTitle: (t) => titles.push(t) },
   };
 
   mod.default({ on: (event, fn) => handlers.set(event, fn) });
 
   // Pi rewrites its own title after extensions bind, so the brand is applied
-  // on startup, on renames, and on new turns alike.
+  // on startup, on renames, and on new turns alike. The folder leads the title,
+  // so several open tabs differ in the part a narrow tab strip actually shows.
   for (const event of ["session_start", "session_info_changed", "agent_start"]) {
     assert.ok(handlers.has(event), `must hook ${event}`);
     await handlers.get(event)({}, ctx);
-    assert.equal(titles[titles.length - 1], "learningcode by the learning curve");
+    assert.equal(titles[titles.length - 1], "homework-3 \u00b7 learningcode");
   }
 
   // Print and JSON modes have no tab to brand.

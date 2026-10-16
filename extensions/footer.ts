@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { folderLabel } from "../lib/folder.mjs";
 import { inverseBox, safeFg } from "../lib/theme.mjs";
 
 /**
@@ -205,6 +206,7 @@ export default function sparkFooter(pi: ExtensionAPI) {
     model?: { provider?: string; id?: string } | null;
     sessionManager?: SessionManagerLike;
     modelRegistry?: RegistryLike;
+    cwd?: string;
   };
 
   // Usage entries land per LLM call, so recompute on turn end and on poll —
@@ -249,6 +251,7 @@ export default function sparkFooter(pi: ExtensionAPI) {
       model?: { provider?: string; id?: string } | null;
       sessionManager?: SessionManagerLike;
       modelRegistry?: RegistryLike;
+      cwd?: string;
     };
     sessionRefs = sessionCtx;
     ctx.ui.setFooter((footerTui: TuiLike, theme: ThemeLike, footerData?: FooterDataLike) => {
@@ -287,6 +290,11 @@ export default function sparkFooter(pi: ExtensionAPI) {
           const fullId = activeModelId(sessionCtx);
           const modelLabel = safeFg(theme, "warning", `  ·  ${width >= 70 ? fullId : shortModelId(fullId)}`);
           const maybeModel = narrow ? "" : modelLabel;
+          // The folder, restored from Pi's stock footer: with several terminals
+          // open it is how a student tells one from another, and the tab title is
+          // easy to miss. Narrow terminals keep the quota bar and mode instead.
+          const folderText = folderLabel(sessionCtx.cwd);
+          const maybeFolder = narrow || !folderText ? "" : safeFg(theme, "dim", `  ·  ${folderText}`);
           // Plan mode sets the `plan-mode` status ("plan" or "plan done/total");
           // Build mode keeps "build done/total" while a checklist is active.
           const planMatch = planStatus?.match(/plan\s+(\d+)\/(\d+)/);
@@ -333,12 +341,12 @@ export default function sparkFooter(pi: ExtensionAPI) {
           // Nothing to say off Spark, or no token: say so rather than draw a bar
           // full of empties that reads as "you have spent nothing".
           if (!token()) {
-            return [safeFg(theme, "muted", "  not on Spark") + maybeModel + modeLabel + maybeSpend, hints];
+            return [safeFg(theme, "muted", "  not on Spark") + maybeFolder + maybeModel + modeLabel + maybeSpend, hints];
           }
-          if (!quota) return [safeFg(theme, "dim", "  quota n/a") + maybeModel + modeLabel + maybeSpend, hints];
+          if (!quota) return [safeFg(theme, "dim", "  quota n/a") + maybeFolder + maybeModel + modeLabel + maybeSpend, hints];
 
           if (quota.aiEnabled === false) {
-            return [safeFg(theme, "error", "  AI disabled for your account — ask your teacher") + maybeModel + modeLabel + maybeSpend, hints];
+            return [safeFg(theme, "error", "  AI disabled for your account — ask your teacher") + maybeFolder + maybeModel + modeLabel + maybeSpend, hints];
           }
 
           // No ceiling: no meter and no percentage, because a full bar implies a
@@ -346,7 +354,7 @@ export default function sparkFooter(pi: ExtensionAPI) {
           if (isUnlimited(quota)) {
             return [
               safeFg(theme, "dim", `  ${Math.round(quota.tokensUsed / 1000)}k used today`) +
-                safeFg(theme, "muted", "  ·  unlimited") + maybeModel + modeLabel + maybeSpend,
+                safeFg(theme, "muted", "  ·  unlimited") + maybeFolder + maybeModel + modeLabel + maybeSpend,
               hints,
             ];
           }
@@ -356,7 +364,7 @@ export default function sparkFooter(pi: ExtensionAPI) {
           if (quota.dailyTokenLimit === null || quota.dailyTokenLimit === undefined) {
             return [
               safeFg(theme, "dim", `  ${Math.round(quota.tokensUsed / 1000)}k used today`) +
-                safeFg(theme, "muted", "  ·  no daily token cap") + maybeModel + modeLabel + maybeSpend,
+                safeFg(theme, "muted", "  ·  no daily token cap") + maybeFolder + maybeModel + modeLabel + maybeSpend,
               hints,
             ];
           }
@@ -374,7 +382,7 @@ export default function sparkFooter(pi: ExtensionAPI) {
             "dim",
             `${Math.round(tokensUsed / 1000)}k / ${Math.round(limit / 1000)}k today`,
           );
-          return [`  ${bar} ${percent}  ${numbers}` + maybeModel + modeLabel + maybeSpend, hints];
+          return [`  ${bar} ${percent}  ${numbers}` + maybeFolder + maybeModel + modeLabel + maybeSpend, hints];
         },
       };
     });
