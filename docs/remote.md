@@ -127,6 +127,18 @@ server → phone : attached { session }
   and resumes the same Pi session, so the next phone message continues where the
   conversation left off rather than starting a new one.
 
+## The computer screen
+
+In remote mode Pi runs headless, so the machine driving the agent would otherwise
+show only "remote: connected". `lib/remote/console.mjs` turns the same agent
+events the phone already receives into a live one-line status —
+`● running edit …/src/app.js · homework-3 · TLC-Spark · 1 phone · +2 queued` —
+plus a short scrolling log of finished tools, extension notes and errors. It
+writes to **stderr** (stdout is Pi's RPC protocol), repaints in place only on a
+TTY and falls back to plain append-only lines when piped, prefixes the activity
+with the connection dot so the most useful field survives a narrow line, and
+redacts anything a bash command might leak before it reaches the screen.
+
 ## Failure cases and answers
 
 | Case | Behaviour |
