@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { destructiveReason, formatApprovalPrompt, truncateApprovalCommand } from "../lib/approval.mjs";
+import { destructiveMatch, destructiveReason, formatApprovalPrompt, truncateApprovalCommand } from "../lib/approval.mjs";
 
 test("destructive commands are caught with a plain reason", () => {
 	assert.equal(destructiveReason("rm -rf build"), "deletes files");
@@ -9,6 +9,19 @@ test("destructive commands are caught with a plain reason", () => {
 	assert.equal(destructiveReason("Remove-Item -Recurse foo"), "deletes files (PowerShell)");
 	assert.equal(destructiveReason("npm publish"), "publishes a package");
 	assert.equal(destructiveReason("sudo apt install x"), "runs as administrator");
+});
+
+test("the same kind of danger has one stable id, whatever the command text", () => {
+	// "Allow Always" remembers the kind, so these must all share one id.
+	assert.equal(destructiveMatch("rm -rf /tmp/a").kind, "delete-files");
+	assert.equal(destructiveMatch("rm -rf /tmp/b\ncd /tmp\necho done").kind, "delete-files");
+	assert.equal(destructiveMatch("rm --recursive build").kind, "delete-files");
+	assert.equal(destructiveMatch("git push -f origin main").kind, "force-push");
+	assert.equal(destructiveMatch("git push --force-with-lease").kind, "force-push");
+	// Different dangers stay distinct.
+	assert.notEqual(destructiveMatch("rm -rf x").kind, destructiveMatch("sudo rm x").kind);
+	assert.equal(destructiveMatch("git status"), null);
+	assert.equal(destructiveMatch(""), null);
 });
 
 test("ordinary commands pass without a prompt", () => {

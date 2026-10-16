@@ -3,7 +3,7 @@ import test from "node:test";
 import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addAlwaysAllow, ALWAYS_ALLOW_KEY, readAlwaysAllow } from "../lib/settings.mjs";
+import { addAlwaysAllow, addAlwaysAllowKind, ALWAYS_ALLOW_KEY, ALWAYS_ALLOW_KINDS_KEY, readAlwaysAllow, readAlwaysAllowKinds } from "../lib/settings.mjs";
 
 const scratch = () => mkdtemp(join(tmpdir(), "lc-settings-"));
 
@@ -89,4 +89,37 @@ test("readAlwaysAllow ignores non-string entries in the list", async () => {
 
 test("the always-allow settings key is exported", () => {
 	assert.equal(ALWAYS_ALLOW_KEY, "alwaysAllowCommands");
+});
+
+test("always-allow kinds are recorded, idempotent, and kept alongside commands", async () => {
+	const dir = await scratch();
+	try {
+		await addAlwaysAllow(dir, "rm -rf build"); // the old exact-string list
+		assert.equal(await addAlwaysAllowKind(dir, "delete-files"), true);
+		assert.equal(await addAlwaysAllowKind(dir, "delete-files"), false, "repeat add reports no change");
+		assert.equal(await addAlwaysAllowKind(dir, ""), false);
+		assert.deepEqual(await readAlwaysAllowKinds(dir), ["delete-files"]);
+		// The two lists do not clobber each other.
+		assert.deepEqual(await readAlwaysAllow(dir), ["rm -rf build"]);
+		const raw = JSON.parse(await readFile(join(dir, "settings.json"), "utf-8"));
+		assert.deepEqual(raw[ALWAYS_ALLOW_KINDS_KEY], ["delete-files"]);
+		assert.equal(ALWAYS_ALLOW_KINDS_KEY, "alwaysAllowKinds");
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test("readAlwaysAllowKinds tolerates a missing key and junk entries", async () => {
+	const dir = await scratch();
+	try {
+		assert.deepEqual(await readAlwaysAllowKinds(dir), []);
+		await writeFile(
+			join(dir, "settings.json"),
+			`${JSON.stringify({ [ALWAYS_ALLOW_KINDS_KEY]: ["sudo", 7, null, "delete-files"] }, null, 2)}\n`,
+			"utf-8",
+		);
+		assert.deepEqual(await readAlwaysAllowKinds(dir), ["sudo", "delete-files"]);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
 });
