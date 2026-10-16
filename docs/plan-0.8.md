@@ -1,8 +1,7 @@
 # LearningCode 0.8 — student-first launch readiness
 
-Status: **in progress — 0.8.x hardened; 0.9.x has the resume item of
-workstream 3 (checklist restore) and the /undo recovery audit.**
-Audience: students,
+Status: **in progress — 0.8.x hardened; workstream 3 (never lose work) is
+done as of 0.9.2; workstreams 4–6 remain.** Audience: students,
 explicitly not teachers or parents. Every item is judged by one
 question: does it make a student's worst day better? If it serves an
 adult's dashboard instead, it belongs in 0.9 or later.
@@ -46,16 +45,18 @@ contains cause + action + wait.
 
 ### 3. Never lose work (resume and persistence)
 
-- Auto-checkpoint sessions; dropped lab Wi-Fi must not eat homework.
-- Checklist persistence: plan todos survive resume/session switch
-  (today they reset). Visible "session restored" confirm on re-entry.
-- `/undo` coverage audit: every destructive action recoverable, and the
-  product says so loudly so beginners dare to experiment.
+- [x] Auto-checkpoint sessions; dropped lab Wi-Fi must not eat homework.
+      (Pi checkpoints the transcript each turn; the checklist is now
+      checkpointed too — 0.9.0.)
+- [x] Checklist persistence: plan todos survive resume/session switch.
+      Visible "session restored" confirm on re-entry. (0.9.0)
+- [x] `/undo` coverage audit: the agent's own file changes are recoverable
+      and `/undo` says so, listing what it will restore/remove. (0.9.1)
 
 Tests: kill-and-resume round trip preserves transcript + checklist;
 undo matrix over the mutating tools.
 
-### 4. Plan mode as curriculum (training wheels)
+### 4. Plan mode as curriculum (training wheels) — NOT STARTED
 
 - Plan templates for common assignments (`/plan explain-bug`,
   `/plan implement-fn`): pre-shaped prompts that teach *how* to plan,
