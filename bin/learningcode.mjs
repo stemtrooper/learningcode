@@ -311,7 +311,7 @@ function parseRemoteCommand(argv) {
 }
 
 async function runRemoteCommand({ command, subcommand, flags }) {
-	if (flags.help || flags.h || (command === "remote" && !subcommand && flags.server === undefined && false)) {
+	if (flags.help || flags.h) {
 		process.stdout.write(REMOTE_HELP);
 		return;
 	}
