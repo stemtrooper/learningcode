@@ -54,8 +54,6 @@ function record(socket) {
 const send = (socket, frame) => socket.send(JSON.stringify({ protocol: 1, ...frame }));
 
 async function startServer(overrides = {}) {
-	// TEMP-BISECT
-	const dir = null;
 	const server = new RemoteServer({
 		port: 0,
 		enrollKey: ENROLL,
@@ -64,7 +62,7 @@ async function startServer(overrides = {}) {
 	});
 	await server.listen();
 	const { agentUrl, uiUrl } = server.address();
-	return { server, agentUrl, uiUrl, dir };
+	return { server, agentUrl, uiUrl };
 }
 
 /** Connect the computer side the way the bridge does. */
@@ -121,6 +119,18 @@ test("a phone message reaches the agent and its response comes back", async () =
 	} finally {
 		await server.close();
 	}
+});
+
+test("allowGeneratedKey:false is honoured, not silently ignored", async () => {
+  // The constructor used to destructure the option and never read it, so an
+  // embedder asking for no dev key still got one minted.
+  const { server } = await startServer({ enrollKey: "", allowGeneratedKey: false });
+  try {
+    assert.equal(server.generatedKey, "", "no dev key is minted when the option is false");
+    assert.equal(server.enrollKey, "", "the enrol key stays empty");
+  } finally {
+    await server.close();
+  }
 });
 
 test("history replays to a phone that reconnects to the same session", async () => {
