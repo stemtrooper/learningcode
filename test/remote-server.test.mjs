@@ -317,3 +317,28 @@ test("health reports how many sessions are live", async () => {
 		await server.close();
 	}
 });
+
+test("a peer that floods frames is closed, not served", async () => {
+	const { server, agentUrl } = await startServer();
+	try {
+		const socket = new WebSocket(agentUrl);
+		await new Promise((resolve, reject) => {
+			socket.on("open", resolve);
+			socket.on("error", reject);
+		});
+		const closed = new Promise((resolve) => socket.on("close", (code) => resolve(code)));
+		send(socket, { type: "hello", sessionId: "s-flood", enrollKey: ENROLL, token: PHONE_TOKEN });
+		// Far past LIMITS.frameRate inside one window: the connection check only
+		// bounds connections, so per-frame limiting is what must stop this.
+		for (let i = 0; i < 200; i += 1) {
+			try {
+				send(socket, { type: "event", event: { type: "agent_end" } });
+			} catch {
+				/* already closing */
+			}
+		}
+		assert.equal(await closed, 1008, "a flood is closed with the policy code");
+	} finally {
+		await server.close();
+	}
+});

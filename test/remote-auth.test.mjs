@@ -13,8 +13,37 @@ import {
 	tokensMatch,
 } from "../lib/remote/tokens.mjs";
 import { SessionStore } from "../lib/remote/sessions.mjs";
+import { ipOf, isLoopback } from "../lib/remote/server.mjs";
 
 const scratch = () => mkdtemp(join(tmpdir(), "lc-remote-auth-"));
+
+const request = (remoteAddress, forwarded) => ({
+	socket: { remoteAddress },
+	headers: forwarded ? { "x-forwarded-for": forwarded } : {},
+});
+
+test("x-forwarded-for is trusted only from a local proxy, not a direct client", () => {
+	const saved = process.env.LEARNINGCODE_REMOTE_TRUST_PROXY;
+	delete process.env.LEARNINGCODE_REMOTE_TRUST_PROXY;
+	try {
+		assert.equal(ipOf(request("127.0.0.1", "203.0.113.9")), "203.0.113.9", "cloudflared connects from loopback");
+		assert.equal(ipOf(request("::1", "203.0.113.9, 10.0.0.1")), "203.0.113.9", "the client, not the proxy hop");
+		assert.equal(ipOf(request("198.51.100.7", "203.0.113.9")), "198.51.100.7", "a direct client cannot forge it");
+		assert.equal(ipOf(request("198.51.100.7")), "198.51.100.7", "no header, the socket stands");
+		assert.equal(ipOf(request(undefined)), "unknown");
+
+		process.env.LEARNINGCODE_REMOTE_TRUST_PROXY = "1";
+		assert.equal(ipOf(request("10.0.0.2", "203.0.113.9")), "203.0.113.9", "an operator can opt in for a remote proxy");
+
+		assert.equal(isLoopback("127.0.0.1"), true);
+		assert.equal(isLoopback("::1"), true);
+		assert.equal(isLoopback("::ffff:127.0.0.1"), true);
+		assert.equal(isLoopback("198.51.100.7"), false);
+	} finally {
+		if (saved === undefined) delete process.env.LEARNINGCODE_REMOTE_TRUST_PROXY;
+		else process.env.LEARNINGCODE_REMOTE_TRUST_PROXY = saved;
+	}
+});
 
 test("tokens are long, random and unique", () => {
 	const seen = new Set();

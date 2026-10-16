@@ -98,6 +98,84 @@ test("the endpoint and catalog are the verified Experiential Labs values", () =>
 	assert.ok(!EXPLABS_MODELS.includes("qwen3.8-max"), "the invented slug is gone");
 });
 
+/** A trimmed catalog payload in the shape the live endpoint returns. */
+const CATALOG = {
+	models: [
+		{
+			model: {
+				slug: "claude-fable-5.1",
+				display_name: "Claude Fable 5.1",
+				status: "active",
+				context_window: 1000000,
+				max_output_tokens: 128000,
+				supported_params: { reasoning: true },
+				input_modalities: ["text", "image"],
+			},
+			providers: [
+				{
+					routable: true,
+					input_nano_usd_per_million: 10000000000,
+					output_nano_usd_per_million: 50000000000,
+					cached_input_nano_usd_per_million: 250000000,
+				},
+			],
+		},
+		{
+			model: { slug: "glm-5.3-flash", display_name: "GLM 5.3 Flash", status: "active", context_window: 200000, max_output_tokens: 8192, supported_params: { reasoning: true }, input_modalities: ["text"] },
+			providers: [{ routable: true }],
+		},
+		// Dropped: not routable, retired, and a duplicate slug.
+		{ model: { slug: "not-routable", display_name: "Nope", status: "active" }, providers: [{ routable: false }] },
+		{ model: { slug: "retired", display_name: "Old", status: "deprecated" }, providers: [{ routable: true }] },
+		{ model: { slug: "glm-5.3-flash", display_name: "Dup", status: "active" }, providers: [{ routable: true }] },
+	],
+};
+const catalogFetch = async () => ({ ok: true, json: async () => CATALOG });
+
+test("refresh takes the live catalog, with its real metadata and prices", async () => {
+	const dir = await scratch();
+	const result = await ensureExplabsProvider(dir, { refresh: true, fetchImpl: catalogFetch });
+	assert.equal(result.added, 2, "only the routable, active, deduped models");
+	const models = JSON.parse(await readFile(join(dir, "models.json"), "utf-8")).providers.explabs.models;
+	assert.deepEqual(models.map((m) => m.id), ["claude-fable-5.1", "glm-5.3-flash"]);
+
+	const fable = models[0];
+	assert.equal(fable.name, "Claude Fable 5.1");
+	assert.equal(fable.contextWindow, 1000000, "the catalog's real window, not a blanket 200k");
+	assert.equal(fable.maxTokens, 128000);
+	assert.equal(fable.reasoning, true);
+	assert.deepEqual(fable.input, ["text", "image"]);
+	// nano-USD per million -> USD per million.
+	assert.equal(fable.cost.input, 10);
+	assert.equal(fable.cost.output, 50);
+	assert.equal(fable.cost.cacheRead, 0.25);
+});
+
+test("the fetched catalog is reused on later launches, without a request", async () => {
+	const dir = await scratch();
+	await ensureExplabsProvider(dir, { refresh: true, fetchImpl: catalogFetch });
+	// A plain launch must not fetch, and must not fall back to the built-in list
+	// (which would append slugs the catalog does not have).
+	const again = await ensureExplabsProvider(dir, {
+		refresh: false,
+		fetchImpl: () => assert.fail("a launch must not fetch the catalog"),
+	});
+	assert.equal(again.added, 0, "the cached catalog already covers the entry");
+	const ids = JSON.parse(await readFile(join(dir, "models.json"), "utf-8")).providers.explabs.models.map((m) => m.id);
+	assert.deepEqual(ids, ["claude-fable-5.1", "glm-5.3-flash"]);
+});
+
+test("an unreachable catalog falls back instead of breaking the login", async () => {
+	const dir = await scratch();
+	const result = await ensureExplabsProvider(dir, {
+		refresh: true,
+		fetchImpl: async () => {
+			throw new Error("network down");
+		},
+	});
+	assert.equal(result.added, EXPLABS_MODELS.length, "the built-in list is used when the catalog cannot be reached");
+});
+
 test("ExpLabs counts as logged in once its key is stored, or its env var is set", async () => {
 	const dir = await scratch();
 	assert.equal((await loggedInProviders(dir, {})).has("explabs"), false);

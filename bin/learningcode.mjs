@@ -520,7 +520,7 @@ async function main() {
 			return;
 		}
 		if (provider === "explabs") {
-			await ensureExplabsProvider(dir);
+			await ensureExplabsProvider(dir, { refresh: true });
 			process.stdout.write(`Get an ExpLabs key at ${EXPLABS_KEY_PAGE}\n`);
 			const key = (await promptSecret("ExpLabs key (xpl_...): ")).trim();
 			if (!looksLikeExplabsKey(key)) {

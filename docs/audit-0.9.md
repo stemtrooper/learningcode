@@ -11,7 +11,7 @@ then grepped the tree for the usual rot — swallowed errors, unbounded network,
 leftover `console.*`/`TODO`s.
 
 Baseline at audit time: 268 tests, 267 pass, 1 skip, 0 fail. After the P1 fixes
-below: 272 tests, 271 pass, 1 skip, 0 fail.
+below: 272 tests. After the P2 fixes (0.9.4): 280 tests, 279 pass, 1 skip, 0 fail.
 
 Severity key: **P1** = a student can hit it on a normal day (correctness, safety,
 or a stated product rule); **P2** = real but narrower (robustness, abuse of an
@@ -46,32 +46,35 @@ so the path is testable without a real wait. Tests: `test/learningcode.test.mjs`
 
 ---
 
-## P2 — not yet changed (recommend next)
+## P2 — fixed in 0.9.4
 
 ### P2.1 Per-frame rate limiting is documented but not enforced
 `lib/remote/protocol.mjs` documents `LIMITS.frameRate` as "frames accepted per
 socket per second", and `lib/remote/server.mjs` says "every socket is rate
-limited". In fact `#rateOk` is called **only once, at connection** (server.mjs
-~144 and ~280); the `message` handlers never consult it. An authenticated phone
-can send unbounded frames, every one forwarded to the shared agent.
-*Fix:* call `#rateOk` inside the socket `message` handler; on failure, close
-(1008) or drop the frame.
+limited". In fact `#rateOk` was called **only once, at connection**; the
+`message` handlers never consulted it, so an authenticated phone could send
+unbounded frames, every one forwarded to the shared agent.
+**Fixed:** `#onAgent`/`#onPhone` now check `#rateOk` on every frame and close
+(1008) past the ceiling. Test: `test/remote-server.test.mjs`.
 
-### P2.2 `x-forwarded-for` is trusted unconditionally
-`lib/remote/server.mjs` (`ipOf`) prefers `x-forwarded-for` with no check that a
+### P2.2 `x-forwarded-for` was trusted unconditionally
+`lib/remote/server.mjs` (`ipOf`) preferred `x-forwarded-for` with no check that a
 proxy sat in front. On the `--no-tunnel`/LAN path — or any host without a proxy —
-a client can forge the header to reset its own rate window and to dodge the
+a client could forge the header to reset its own rate window and dodge the
 `${ip}:${sessionId}` attach lockout.
-*Fix:* honour XFF only when an explicit opt-in env is set (e.g.
-`LEARNINGCODE_REMOTE_TRUST_PROXY=1`); otherwise use `socket.remoteAddress`. If
-proxied, take the correct hop rather than the first.
+**Fixed:** `x-forwarded-for` is honoured only when the immediate peer is loopback
+(cloudflared connects from 127.0.0.1) or when an operator sets
+`LEARNINGCODE_REMOTE_TRUST_PROXY=1` for a proxy on another host. Test:
+`test/remote-auth.test.mjs`.
 
-### P2.3 cloudflared is downloaded without an integrity check
-`lib/remote/cloudflared.mjs` pins the release tag and uses HTTPS, but writes the
-downloaded bytes, `chmod 755`s them, and runs them with no checksum. A CDN or TLS
-compromise turns into arbitrary code execution on a student's machine.
-*Fix:* pin a SHA-256 per asset and verify before `rename`; or state the residual
-risk explicitly and keep the pinned tag as the only mitigation.
+### P2.3 cloudflared was downloaded without an integrity check
+`lib/remote/cloudflared.mjs` pinned the release tag and used HTTPS, but wrote the
+downloaded bytes, `chmod 755`'d them, and ran them with no checksum.
+**Fixed:** the download is verified against the SHA-256 GitHub publishes for the
+asset (via the release API) before anything is written; a mismatch is fatal and
+says so. When GitHub exposes no digest (older release, API rate limit) the
+install proceeds as before rather than being blocked. Tests:
+`test/remote-cloudflared.test.mjs`.
 
 ---
 
@@ -133,7 +136,10 @@ risk explicitly and keep the pinned tag as the only mitigation.
   endpoint corrected to `https://api.experientiallabs.ai/v1`, real key page and
   `xpl_` key shape, and the invented `qwen3.8-max` slug replaced with the real
   `qwen3.8-27b`. Verified against the live catalog on 2026-10-16 and guarded by
-  a test.
+  a test. The model list, context windows, reasoning flags and prices now come
+  from that catalog (`GET /api/models`), fetched at login and cached beside
+  `models.json`, with the built-in list only as an offline fallback — so a launch
+  makes no network request.
 - **Weekly reset time**: `/quota` (and the quota line) now state
   `resets Fri 00:00 (in …)`, computed by a pure `quotaResetLine()` in
   `lib/failure.mjs`.
