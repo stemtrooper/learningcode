@@ -18,10 +18,10 @@ inference through **TLC-Spark**.
 general-purpose AI coding tool: the model, the quota and the seat limits all belong
 to TLC, and every token you spend comes out of your course allocation.
 
-> **New in 0.5.7** — `/scoped-models` picks are remembered across sessions;
-> the footer always shows the active model in yellow; Token Harbor gains
-> `claude-haiku-5.5`; thinking-level cycling moves to `ctrl+shift+e`, reserving
-> `shift+tab` for Plan/Build mode. See [Changelog](#changelog).
+> **New in 0.11.0** — optional strict plan mode: `/plan strict on` locks editing
+> until you have a plan and approve it with `/approve`, building the planning
+> habit. Off by default; the footer shows `PLAN first` while it is holding you
+> back. See [Changelog](#changelog).
 
 ---
 
@@ -270,11 +270,16 @@ Useful commands, typed inside the session:
 | `/spark-login` | check your TLC-Spark token, or find out how to get a new one |
 | `/model` | switch model |
 | `/hotkeys` | keyboard shortcuts |
-| `/plan` | toggle Plan / Build mode (`shift+tab`) — plan without touching anything |
+| `/plan` | toggle Plan / Build mode (`shift+tab`) — plan without touching anything; `/plan <template>` starts a guided plan; `/plan strict on\|off` sets the strict preset |
 | `/approve` | approve the plan and start building, checklist carried along |
 | `/todo` | manage the checklist: `add <text> \| done <n> \| clear` |
 | `/todos` | show the full plan checklist |
 | `/intro` | replay the 5-minute guided tour (`--no-intro` skips it) |
+
+`/plan strict on` turns on the optional strict preset: editing stays locked in
+Build until you make a plan and approve it with `/approve`. It is off by default
+and `/plan strict off` turns it off; a lab can pin it on for a shared machine
+with `LEARNINGCODE_PLAN_STRICT=1` (the student cannot toggle that off in-session).
 
 `/quota`, `/seats` and `/spark-login` talk to Spark directly. They are the commands a
 stock AI coding tool does not have, because those endpoints are not part of any
@@ -484,6 +489,10 @@ often, and a student's install must not change underneath them mid-term.
 
 ## Changelog
 
+* **0.11.0** — optional strict plan mode: `/plan strict on` locks Build until a
+  plan exists and is approved with `/approve`, so editing cannot start before
+  planning. The footer reads `PLAN first` while locked. Off by default; a lab can
+  pin it on for a shared machine, and `/plan strict off` turns it off.
 * **0.10.0** — guided plans and a screen that tells you where you are:
   `/plan explain-bug [about]` and `/plan implement-fn [about]` enter Plan mode
   with a pre-shaped prompt that teaches *how* to plan (`/plan` alone still
@@ -491,6 +500,25 @@ often, and a student's install must not change underneath them mid-term.
   footer, so several open windows are told apart. `learningcode remote` shows a
   live line of what the phone is running on the computer — the current tool and
   the file it touched, the model, seats and queue — with a short scrolling log.
+* **0.9.5** — hardening under the hood: a compound command shows every kind of
+  danger it carries and "Always allow" remembers each; the nearly-out-of-quota
+  warning now says when the weekly quota resets; `/undo` only touches files
+  inside your project.
+* **0.9.4** — ExpLabs' model list is fetched live at login (cached for offline),
+  the phone relay drops a connection that floods it, and the tunnel program is
+  checksum-verified before it runs.
+* **0.9.3** — Spark calls time out in seconds instead of hanging; `/quota` names
+  the weekly reset (Friday 00:00) and `/seats` always answers; ExpLabs login and
+  its `xpl_` keys are fixed; an unexpected error is one plain sentence, never a
+  stack.
+* **0.9.2** — "Allow Always" remembers the *kind* of danger ("deletes files"),
+  not the exact command text, so a rewritten command no longer re-prompts.
+* **0.9.1** — `/undo` recovers the agent's own file changes: it lists what it
+  will restore and remove, puts changed files back, and deletes created ones.
+* **0.9.0** — your Plan-mode checklist survives a restart (`learningcode -c`),
+  per conversation, resuming in Build with progress intact.
+* **0.8.6** — cleanup: `doctor` no longer blocks on a token, a mistyped remote
+  flag says what it needs, and colours are drawn defensively.
 * **0.7.8** — CommandCode is a provider you can log in to from learningcode:
   `learningcode --login-provider commandcode` (your key is entered without echo),
   or `/login` inside learningcode. Its ~90 OpenAI- and Anthropic-compatible

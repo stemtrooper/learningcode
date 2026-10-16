@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createJiti } from "jiti";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	PLAN_READ_TOOLS,
+	STRICT_PLAN_REASON,
 	addTodoItem,
 	cleanStepText,
 	completeTodoItem,
@@ -14,6 +15,8 @@ import {
 	isSafeCommand,
 	markCompletedSteps,
 	planToolSet,
+	resolveStrictPreset,
+	strictLockReason,
 } from "../lib/plan-mode.mjs";
 
 test("plan steps are extracted from a Plan: header", () => {
@@ -62,6 +65,42 @@ test("destructive shell is unsafe, read-only shell is safe", () => {
 
 test("long steps are trimmed for the widget", () => {
 	assert.ok(cleanStepText("x".repeat(100)).length <= 50);
+});
+
+test("the strict preset resolves: env wins, then the student's setting", () => {
+	// Off by default, and env values are accepted in the forms a lab might use.
+	assert.deepEqual(resolveStrictPreset(false, ""), { strict: false, locked: false });
+	assert.deepEqual(resolveStrictPreset(undefined, undefined), { strict: false, locked: false });
+	assert.deepEqual(resolveStrictPreset(true, undefined), { strict: true, locked: false });
+	assert.deepEqual(resolveStrictPreset(false, "1"), { strict: true, locked: true });
+	assert.deepEqual(resolveStrictPreset(false, " on "), { strict: true, locked: true });
+	assert.deepEqual(resolveStrictPreset(true, "off"), { strict: false, locked: true });
+});
+
+test("strict mode locks Build until a plan exists and is approved", () => {
+	const base = { strict: true, mode: "build" };
+	assert.equal(strictLockReason({ ...base, approved: false, todoCount: 0 }), STRICT_PLAN_REASON);
+	assert.equal(
+		strictLockReason({ ...base, approved: true, todoCount: 0 }),
+		STRICT_PLAN_REASON,
+		"approval without a plan is not enough",
+	);
+	assert.equal(
+		strictLockReason({ ...base, approved: false, todoCount: 3 }),
+		STRICT_PLAN_REASON,
+		"a plan without approval is not enough",
+	);
+	assert.equal(strictLockReason({ ...base, approved: true, todoCount: 3 }), null);
+	assert.equal(
+		strictLockReason({ strict: false, mode: "build", approved: false, todoCount: 0 }),
+		null,
+		"off by default",
+	);
+	assert.equal(
+		strictLockReason({ ...base, mode: "plan", approved: false, todoCount: 0 }),
+		null,
+		"Plan mode has its own gate",
+	);
 });
 
 test("the extension toggles modes and blocks writers only in plan", async () => {
@@ -511,9 +550,10 @@ test("the /plan command runs a guided template, or refuses an unknown one", asyn
 	const complete = commands.get("plan").getArgumentCompletions;
 	assert.deepEqual(
 		complete("").map((c) => c.value),
-		["explain-bug", "implement-fn"],
+		["explain-bug", "implement-fn", "strict"],
 	);
 	assert.deepEqual(complete("exp").map((c) => c.value), ["explain-bug"]);
+	assert.deepEqual(complete("s").map((c) => c.value), ["strict"], "the strict preset is offerable too");
 	assert.ok(complete("exp")[0].description, "each template carries a summary");
 	assert.equal(complete("explain-bug "), null, "after the name it is free subject text");
 
@@ -531,4 +571,121 @@ test("the /plan command runs a guided template, or refuses an unknown one", asyn
 	assert.match(sent[0], /login is broken/, "the subject rides along");
 	assert.match(sent[0], /Plan:/, "the prompt asks for the header the checklist parses");
 	assert.match(notices.at(-1), /Plan template "explain-bug"/);
+});
+
+/** Run `fn` with the agent dir (and optional strict env) set, then restore both. */
+async function withEnv(dir, planStrict, fn) {
+	const savedDir = process.env.LEARNINGCODE_DIR;
+	const savedStrict = process.env.LEARNINGCODE_PLAN_STRICT;
+	process.env.LEARNINGCODE_DIR = dir;
+	if (planStrict === undefined) delete process.env.LEARNINGCODE_PLAN_STRICT;
+	else process.env.LEARNINGCODE_PLAN_STRICT = planStrict;
+	try {
+		return await fn();
+	} finally {
+		if (savedDir === undefined) delete process.env.LEARNINGCODE_DIR;
+		else process.env.LEARNINGCODE_DIR = savedDir;
+		if (savedStrict === undefined) delete process.env.LEARNINGCODE_PLAN_STRICT;
+		else process.env.LEARNINGCODE_PLAN_STRICT = savedStrict;
+	}
+}
+
+test("strict preset: Build is locked until a plan is approved", async () => {
+	const jiti = createJiti(import.meta.url);
+	const mod = await jiti.import("../extensions/plan-mode.ts");
+	const dir = await mkdtemp(join(tmpdir(), "lc-strict-"));
+	await writeFile(join(dir, "settings.json"), JSON.stringify({ planStrict: true }), "utf-8");
+	await withEnv(dir, undefined, async () => {
+		const app = startExtension(mod, "strict-s");
+		await app.handlers.get("session_start")({ reason: "startup" }, app.ctx);
+		assert.equal(app.statuses.get("plan-mode"), "strict", "Build is locked and says so");
+		assert.match(app.notices.join("\n"), /Strict plan mode is on/);
+
+		const toolCall = app.handlers.get("tool_call");
+		const edit = await toolCall({ toolName: "edit", input: {} });
+		assert.equal(edit.block, true, "edits blocked while locked");
+		assert.match(edit.reason, /Strict plan mode/);
+		assert.equal(await toolCall({ toolName: "read", input: {} }), undefined, "reads still work");
+		assert.equal(await toolCall({ toolName: "bash", input: { command: "git status" } }), undefined, "safe shell still works");
+		assert.equal((await toolCall({ toolName: "bash", input: { command: "rm -rf dist" } })).block, true, "mutating shell blocked");
+
+		// A plan plus an approval is the way through.
+		await app.commands.get("plan").handler("", app.ctx);
+		await app.commands.get("todo").handler("add Fix the bug", app.ctx);
+		await app.commands.get("approve").handler("", app.ctx);
+		assert.equal(app.statuses.get("plan-mode"), "build 0/1", "unlocked after approval");
+		assert.equal(await toolCall({ toolName: "edit", input: {} }), undefined, "edits allowed now");
+
+		// Clearing the checklist takes the plan away, so the lock returns.
+		await app.commands.get("todo").handler("clear", app.ctx);
+		assert.equal(app.statuses.get("plan-mode"), "strict", "no plan, locked again");
+	});
+});
+
+test("the student can toggle strict mode, and it persists", async () => {
+	const jiti = createJiti(import.meta.url);
+	const mod = await jiti.import("../extensions/plan-mode.ts");
+	const dir = await mkdtemp(join(tmpdir(), "lc-strict-toggle-"));
+	await withEnv(dir, undefined, async () => {
+		const a = startExtension(mod, "toggle-s");
+		await a.handlers.get("session_start")({ reason: "startup" }, a.ctx);
+		assert.equal(a.statuses.has("plan-mode"), false, "off by default");
+
+		await a.commands.get("plan").handler("strict", a.ctx);
+		assert.match(a.notices.at(-1), /Strict plan mode is OFF/);
+		await a.commands.get("plan").handler("strict bogus", a.ctx);
+		assert.match(a.notices.at(-1), /Usage: \/plan strict/);
+
+		await a.commands.get("plan").handler("strict on", a.ctx);
+		assert.equal(a.statuses.get("plan-mode"), "strict");
+		assert.equal(JSON.parse(await readFile(join(dir, "settings.json"), "utf-8")).planStrict, true);
+
+		// A new process reads the setting back.
+		const b = startExtension(mod, "toggle-s");
+		await b.handlers.get("session_start")({ reason: "startup" }, b.ctx);
+		assert.equal(b.statuses.get("plan-mode"), "strict", "the toggle survived");
+
+		await b.commands.get("plan").handler("strict off", b.ctx);
+		assert.equal(b.statuses.has("plan-mode"), false);
+		assert.equal(JSON.parse(await readFile(join(dir, "settings.json"), "utf-8")).planStrict, false);
+	});
+});
+
+test("a lab can pin strict mode through the environment", async () => {
+	const jiti = createJiti(import.meta.url);
+	const mod = await jiti.import("../extensions/plan-mode.ts");
+	const dir = await mkdtemp(join(tmpdir(), "lc-strict-env-"));
+	await withEnv(dir, "1", async () => {
+		const app = startExtension(mod, "env-s");
+		await app.handlers.get("session_start")({ reason: "startup" }, app.ctx);
+		assert.equal(app.statuses.get("plan-mode"), "strict");
+
+		await app.commands.get("plan").handler("strict off", app.ctx);
+		assert.match(app.notices.at(-1), /set by your lab/);
+		assert.equal(app.statuses.get("plan-mode"), "strict", "still locked");
+	});
+});
+
+test("in strict mode an approved plan stays approved across a resume", async () => {
+	const jiti = createJiti(import.meta.url);
+	const mod = await jiti.import("../extensions/plan-mode.ts");
+	const dir = await mkdtemp(join(tmpdir(), "lc-strict-resume-"));
+	await writeFile(join(dir, "settings.json"), JSON.stringify({ planStrict: true }), "utf-8");
+	await withEnv(dir, undefined, async () => {
+		const a = startExtension(mod, "resume-s");
+		await a.handlers.get("session_start")({ reason: "startup" }, a.ctx);
+		await a.commands.get("plan").handler("", a.ctx);
+		await a.commands.get("todo").handler("add Fix the bug", a.ctx);
+		await a.commands.get("approve").handler("", a.ctx);
+		await a.handlers.get("session_shutdown")({ reason: "quit" }, a.ctx);
+
+		const b = startExtension(mod, "resume-s");
+		await b.handlers.get("session_start")({ reason: "resume" }, b.ctx);
+		assert.equal(b.statuses.get("plan-mode"), "build 0/1", "restored and still approved");
+		assert.equal(
+			await b.handlers.get("tool_call")({ toolName: "edit", input: {} }),
+			undefined,
+			"edits stay unlocked after a resume",
+		);
+	});
 });

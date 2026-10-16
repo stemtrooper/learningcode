@@ -3,7 +3,7 @@ import test from "node:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { loadPlanTodos, normalizeTodos, planStorePath, savePlanTodos } from "../lib/plan-store.mjs";
+import { loadPlanState, loadPlanTodos, normalizeTodos, planStorePath, savePlanState, savePlanTodos } from "../lib/plan-store.mjs";
 
 const scratch = () => mkdtemp(join(tmpdir(), "lc-plan-store-"));
 const TODOS = [
@@ -15,6 +15,18 @@ test("a saved checklist loads back exactly", async () => {
 	const dir = await scratch();
 	await savePlanTodos(dir, "session-a", TODOS);
 	assert.deepEqual(await loadPlanTodos(dir, "session-a"), TODOS);
+});
+
+test("the approval flag is remembered with the checklist", async () => {
+	const dir = await scratch();
+	await savePlanState(dir, "session-a", { todos: TODOS, approved: true });
+	const state = await loadPlanState(dir, "session-a");
+	assert.deepEqual(state.todos, TODOS);
+	assert.equal(state.approved, true);
+	// Absent file, and a file written before the flag existed, both read clean.
+	assert.deepEqual(await loadPlanState(dir, "missing"), { todos: [], approved: false });
+	await savePlanTodos(dir, "old", TODOS);
+	assert.equal((await loadPlanState(dir, "old")).approved, false, "approval defaults to false");
 });
 
 test("an empty checklist removes the file, so nothing restores by surprise", async () => {

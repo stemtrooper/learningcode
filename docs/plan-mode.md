@@ -1,6 +1,8 @@
 # Plan Mode / Build Mode (Shift+Tab) — final build plan
 
-Status: **approved, to build as 0.6.0**. All Pi API claims verified against
+Status: **implemented** (built in 0.6.0, extended through 0.10.0; the optional
+strict preset landed in 0.11.0 — see `docs/plan-0.8.md`, workstream 4). All Pi
+API claims verified against
 `@earendil-works/pi-coding-agent@1.1.0` in `node_modules`
 (`dist/core/extensions/types.d.ts`; `KeyId` in `@earendil-works/pi-tui`).
 

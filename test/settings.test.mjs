@@ -3,9 +3,23 @@ import test from "node:test";
 import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addAlwaysAllow, addAlwaysAllowKind, ALWAYS_ALLOW_KEY, ALWAYS_ALLOW_KINDS_KEY, readAlwaysAllow, readAlwaysAllowKinds } from "../lib/settings.mjs";
+import { addAlwaysAllow, addAlwaysAllowKind, ALWAYS_ALLOW_KEY, ALWAYS_ALLOW_KINDS_KEY, readAlwaysAllow, readAlwaysAllowKinds, readPlanStrict, setPlanStrict } from "../lib/settings.mjs";
 
 const scratch = () => mkdtemp(join(tmpdir(), "lc-settings-"));
+
+test("the strict plan preset reads false by default and round-trips", async () => {
+	const dir = await scratch();
+	try {
+		assert.equal(await readPlanStrict(dir), false, "absent file means off");
+		assert.equal(await setPlanStrict(dir, true), true, "first change reports a change");
+		assert.equal(await readPlanStrict(dir), true);
+		assert.equal(await setPlanStrict(dir, true), false, "repeat is a no-op");
+		assert.equal(await setPlanStrict(dir, false), true);
+		assert.equal(await readPlanStrict(dir), false);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
 
 test("readAlwaysAllow returns an empty list when there is no settings file", async () => {
 	const dir = await scratch();

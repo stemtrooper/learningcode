@@ -304,11 +304,13 @@ export default function sparkFooter(pi: ExtensionAPI) {
           const buildCount = buildMatch?.slice(1, 3).join("/");
           const buildAllDone = buildMatch != null && buildMatch[1] === buildMatch[2];
           const modeLabel =
-            planStatus != null && planStatus.startsWith("plan")
-              ? safeFg(theme, "warning", `  ·  PLAN${planCount ? ` ${planCount}` : ""}${planAllDone ? " ✓" : ""}`)
-              : buildCount
-                ? safeFg(theme, "dim", `  ·  BUILD ${buildCount}${buildAllDone ? " ✓" : ""}`)
-                : safeFg(theme, "dim", "  ·  build");
+            planStatus === "strict"
+              ? safeFg(theme, "warning", "  ·  PLAN first")
+              : planStatus != null && planStatus.startsWith("plan")
+                ? safeFg(theme, "warning", `  ·  PLAN${planCount ? ` ${planCount}` : ""}${planAllDone ? " ✓" : ""}`)
+                : buildCount
+                  ? safeFg(theme, "dim", `  ·  BUILD ${buildCount}${buildAllDone ? " ✓" : ""}`)
+                  : safeFg(theme, "dim", "  ·  build");
           // Every path ends with the exit hint. Students asked how to quit,
           // and the footer is the one line that is always on screen.
           // (ctrl+c clears the editor; pressed twice, or on an empty editor

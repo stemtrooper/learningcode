@@ -857,6 +857,9 @@ test("narrow footers stay short: model cut, quota n/a, spend dropped", async () 
     const plan = footerFactory({}, theme, { getExtensionStatuses: () => new Map([["plan-mode", "plan 1/3"]]) }).render(40).join("");
     assert.match(plan, /PLAN 1\/3/, "mode counts survive narrowing");
 
+    const strict = footerFactory({}, theme, { getExtensionStatuses: () => new Map([["plan-mode", "strict"]]) }).render(40).join("");
+    assert.match(strict, /PLAN first/, "the strict preset shows the lock, not BUILD");
+
     await handlers.get("session_shutdown")();
   });
 });

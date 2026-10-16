@@ -9,9 +9,12 @@ import {
 	isSafeCommand,
 	markCompletedSteps,
 	planToolSet,
+	resolveStrictPreset,
+	strictLockReason,
 } from "../lib/plan-mode.mjs";
 import { expandTemplate, listTemplates } from "../lib/plan-templates.mjs";
-import { loadPlanTodos, savePlanTodos } from "../lib/plan-store.mjs";
+import { loadPlanState, savePlanState } from "../lib/plan-store.mjs";
+import { readPlanStrict, setPlanStrict } from "../lib/settings.mjs";
 import { safeFg } from "../lib/theme.mjs";
 
 /**
@@ -29,6 +32,11 @@ import { safeFg } from "../lib/theme.mjs";
  * conversation brings the student's progress back. The mode itself is not
  * restored — every session still starts in Build, so a resume can never leave
  * a student blocked from editing by surprise.
+ *
+ * An optional strict preset (off by default) changes that last part: when it is
+ * on, Build starts locked until a plan exists and has been approved. The lab can
+ * force it through the environment; the student controls it with
+ * `/plan strict on|off`.
  */
 
 type Todo = { step: number; text: string; completed: boolean };
@@ -38,12 +46,23 @@ export const PLAN_WIDGET_MIN_WIDTH = 100;
 
 const STATUS_KEY = "plan-mode";
 
-function statusFor(ctx: ExtensionContext, mode: string, todos: Todo[]): void {
+function statusFor(
+	ctx: ExtensionContext,
+	mode: string,
+	todos: Todo[],
+	strict: boolean,
+	approved: boolean,
+): void {
 	// Footer parses this: "plan" or "plan done/total" in Plan mode,
-	// "build done/total" in Build mode while a checklist is active.
+	// "build done/total" in Build mode while a checklist is active, and
+	// "strict" while the strict preset is holding Build locked.
 	const done = todos.filter((t) => t.completed).length;
 	if (mode === "plan") {
 		ctx.ui.setStatus(STATUS_KEY, todos.length > 0 ? `plan ${done}/${todos.length}` : "plan");
+		return;
+	}
+	if (strict && !(approved && todos.length > 0)) {
+		ctx.ui.setStatus(STATUS_KEY, "strict");
 		return;
 	}
 	ctx.ui.setStatus(STATUS_KEY, todos.length > 0 ? `build ${done}/${todos.length}` : undefined);
@@ -61,6 +80,11 @@ export default function planMode(pi: ExtensionAPI) {
 	let mode: "build" | "plan" = "build";
 	let todos: Todo[] = [];
 	let toolsBefore: string[] | undefined;
+	// Strict preset state. `approved` is per-session (checkpointed with the
+	// checklist); `strict` is resolved at session start from env + settings.
+	let approved = false;
+	let strict = false;
+	let strictLockedByEnv = false;
 
 	// The session whose checklist we are editing. Pi keeps the id stable across
 	// `-c` / `--resume`. The extension tests pass a ctx with no sessionManager,
@@ -68,15 +92,15 @@ export default function planMode(pi: ExtensionAPI) {
 	const sessionIdOf = (ctx: ExtensionContext): string | null =>
 		ctx.sessionManager?.getSessionId?.() ?? null;
 
-	/** Checkpoint the checklist for this session. Never throws. */
+	/** Checkpoint the checklist and approval flag for this session. Never throws. */
 	const persist = (ctx: ExtensionContext): Promise<void> => {
 		const id = sessionIdOf(ctx);
 		if (!id) return Promise.resolve();
-		return savePlanTodos(agentDir(), id, todos);
+		return savePlanState(agentDir(), id, { todos, approved });
 	};
 
 	const refresh = (ctx: ExtensionContext) => {
-		statusFor(ctx, mode, todos);
+		statusFor(ctx, mode, todos, strict, approved);
 		// setWidget is TUI-only; under RPC (phone) it may be inert or throw —
 		// the phone gets the text checklist through /todos notifies instead.
 		try {
@@ -97,15 +121,17 @@ export default function planMode(pi: ExtensionAPI) {
 		if (mode === "plan") pi.setActiveTools(planToolSet(toolsBefore ?? pi.getActiveTools()));
 		// Every checklist/mode change goes through refresh(), so the checkpoint is
 		// always current — a crash or a dropped Wi-Fi never costs more than the step
-		// in flight.
-		void persist(ctx);
+		// in flight. Returned so a command that must be durable can await it.
+		return persist(ctx);
 	};
 
 	const setMode = (next: "build" | "plan", ctx: ExtensionContext, silent = false) => {
 		if (next === "plan" && mode !== "plan") toolsBefore = pi.getActiveTools();
 		mode = next;
 		if (next === "plan") {
+			// A fresh planning round: the previous approval no longer covers it.
 			todos = [];
+			approved = false;
 			pi.setActiveTools(planToolSet(toolsBefore ?? pi.getActiveTools()));
 			if (!silent) ctx.ui.notify("Plan mode — research only. Shift+Tab (or /plan) for Build to edit.", "info");
 		} else {
@@ -118,16 +144,66 @@ export default function planMode(pi: ExtensionAPI) {
 		refresh(ctx);
 	};
 
+	/**
+	 * Turn the strict preset on/off from `/plan strict`. Persisted so it
+	 * survives restarts; the env override is handled by the caller.
+	 */
+	const setStrict = async (value: boolean, ctx: ExtensionContext) => {
+		strict = value;
+		const dir = agentDir();
+		if (dir) {
+			try {
+				await setPlanStrict(dir, value);
+			} catch {
+				/* best effort: the in-memory toggle still applies this session */
+			}
+		}
+		refresh(ctx);
+	};
+
+	const handleStrict = async (arg: string, ctx: ExtensionContext) => {
+		const want = arg.trim().toLowerCase();
+		if (want === "") {
+			ctx.ui.notify(
+				`Strict plan mode is ${strict ? "ON" : "OFF"}${strictLockedByEnv ? " (fixed by your lab)" : ""}. Use /plan strict on|off.`,
+				"info",
+			);
+			return;
+		}
+		if (want !== "on" && want !== "off") {
+			ctx.ui.notify("Usage: /plan strict on | /plan strict off", "info");
+			return;
+		}
+		if (strictLockedByEnv) {
+			ctx.ui.notify(
+				`Strict plan mode is set by your lab and cannot be changed here (it is ${strict ? "on" : "off"}).`,
+				"warning",
+			);
+			return;
+		}
+		await setStrict(want === "on", ctx);
+		ctx.ui.notify(
+			want === "on"
+				? "Strict plan mode on — make a plan and /approve before editing."
+				: "Strict plan mode off — editing is free again.",
+			"info",
+		);
+	};
+
 	pi.registerCommand("plan", {
-		description: "Toggle Plan / Build mode (Shift+Tab), or start a guided plan: /plan <template> [about]",
+		description:
+			"Toggle Plan / Build mode (Shift+Tab), start a guided plan (/plan <template> [about]), or set the strict preset (/plan strict on|off)",
 		getArgumentCompletions: (argumentPrefix) => {
 			const prefix = String(argumentPrefix ?? "");
 			// Only the first token is a template name; after the space it is the
 			// student's own subject text, which is free-form.
 			if (prefix.includes(" ")) return null;
-			return listTemplates()
-				.filter((t) => t.name.startsWith(prefix.trim().toLowerCase()))
-				.map((t) => ({ value: t.name, label: t.name, description: t.summary }));
+			const options = [
+				...listTemplates().map((t) => ({ value: t.name, label: t.name, description: t.summary })),
+				{ value: "strict", label: "strict", description: "Turn the strict plan preset on or off" },
+			];
+			const p = prefix.trim().toLowerCase();
+			return options.filter((o) => o.value.startsWith(p));
 		},
 		handler: async (args, ctx) => {
 			const text = String(args ?? "").trim();
@@ -139,6 +215,10 @@ export default function planMode(pi: ExtensionAPI) {
 			const space = text.indexOf(" ");
 			const name = (space === -1 ? text : text.slice(0, space)).toLowerCase();
 			const subject = space === -1 ? "" : text.slice(space + 1).trim();
+			if (name === "strict") {
+				await handleStrict(subject, ctx);
+				return;
+			}
 			const prompt = expandTemplate(name, subject);
 			if (!prompt) {
 				const names = listTemplates()
@@ -165,17 +245,26 @@ export default function planMode(pi: ExtensionAPI) {
 	pi.registerCommand("approve", {
 		description: "Approve the plan: switch to Build and start executing",
 		handler: async (_args, ctx) => {
-			if (mode !== "plan") {
-				ctx.ui.notify("Nothing to approve — you are already in Build mode.", "info");
+			if (mode === "plan") {
+				if (todos.length === 0) {
+					ctx.ui.notify("No checklist yet. Ask for a plan first, then /approve it.", "info");
+					return;
+				}
+				const total = todos.length;
+				approved = true;
+				setMode("build", ctx, true);
+				ctx.ui.notify(`Plan approved — ${total} steps. Building: /todo done <n> as you go.`, "info");
 				return;
 			}
-			if (todos.length === 0) {
-				ctx.ui.notify("No checklist yet. Ask for a plan first, then /approve it.", "info");
+			// Strict mode can leave Build locked with a plan that was never
+			// approved (e.g. a resume). /approve is the way out without wiping it.
+			if (strict && !approved && todos.length > 0) {
+				approved = true;
+				await refresh(ctx);
+				ctx.ui.notify("Plan approved — editing is unlocked.", "info");
 				return;
 			}
-			const total = todos.length;
-			setMode("build", ctx, true);
-			ctx.ui.notify(`Plan approved — ${total} steps. Building: /todo done <n> as you go.`, "info");
+			ctx.ui.notify("Nothing to approve — you are already in Build mode.", "info");
 		},
 	});
 
@@ -214,18 +303,19 @@ export default function planMode(pi: ExtensionAPI) {
 			const rest = space === -1 ? "" : text.slice(space + 1).trim();
 			if (sub === "add" && rest.length > 0) {
 				const item = addTodoItem(todos, rest);
-				refresh(ctx);
+				await refresh(ctx);
 				ctx.ui.notify(`Added step ${item.step}: ${item.text}`, "info");
 			} else if (sub === "done" && rest.length > 0) {
 				if (!completeTodoItem(todos, rest)) {
 					ctx.ui.notify(`No step ${rest}. /todos lists the checklist.`, "info");
 					return;
 				}
-				refresh(ctx);
+				await refresh(ctx);
 				ctx.ui.notify(`Step ${rest} done.`, "info");
 			} else if (sub === "clear") {
 				todos = [];
-				refresh(ctx);
+				approved = false;
+				await refresh(ctx);
 				ctx.ui.notify("Checklist cleared.", "info");
 			} else {
 				ctx.ui.notify("Usage: /todo add <text> | /todo done <n> | /todo clear", "info");
@@ -260,14 +350,20 @@ export default function planMode(pi: ExtensionAPI) {
 	}
 
 	pi.on("tool_call", async (event) => {
-		if (mode !== "plan") return undefined;
 		const name = (event as { toolName?: string }).toolName ?? "";
 		const safe = name === "bash" && isSafeCommand((event as { input?: { command?: string } }).input?.command);
+		if (mode === "plan") {
+			if (!isBlockedInPlanMode(name, safe)) return undefined;
+			return {
+				block: true,
+				reason: "Plan mode is on — research only. Press Shift+Tab (or /plan) for Build mode to edit.",
+			};
+		}
+		// Strict preset: Build stays locked until a plan exists and is approved.
+		const reason = strictLockReason({ strict, mode, approved, todoCount: todos.length });
+		if (!reason) return undefined;
 		if (!isBlockedInPlanMode(name, safe)) return undefined;
-		return {
-			block: true,
-			reason: "Plan mode is on — research only. Press Shift+Tab (or /plan) for Build mode to edit.",
-		};
+		return { block: true, reason };
 	});
 
 	pi.on("before_agent_start", async (event) => {
@@ -321,8 +417,23 @@ export default function planMode(pi: ExtensionAPI) {
 		// belongs to the conversation and is brought back from its checkpoint.
 		mode = "build";
 		toolsBefore = undefined;
+		approved = false;
+		// The lab's environment variable (if any) wins over the student's setting.
+		const dir = agentDir();
+		try {
+			const saved = dir ? await readPlanStrict(dir) : false;
+			const preset = resolveStrictPreset(saved, process.env.LEARNINGCODE_PLAN_STRICT);
+			strict = preset.strict;
+			strictLockedByEnv = preset.locked;
+		} catch {
+			// A corrupt settings file must never stop startup.
+			strict = false;
+			strictLockedByEnv = false;
+		}
 		const id = sessionIdOf(ctx);
-		todos = id ? await loadPlanTodos(agentDir(), id) : [];
+		const state = id && dir ? await loadPlanState(dir, id) : { todos: [] as Todo[], approved: false };
+		todos = state.todos;
+		approved = state.approved;
 		if (ctx.hasUI) {
 			refresh(ctx);
 			if (todos.length > 0) {
@@ -331,6 +442,9 @@ export default function planMode(pi: ExtensionAPI) {
 					`Restored your plan checklist — ${todos.length} step${todos.length === 1 ? "" : "s"}${done ? `, ${done} done` : ""}.`,
 					"info",
 				);
+			}
+			if (strict && !(approved && todos.length > 0)) {
+				ctx.ui.notify("Strict plan mode is on — make a plan and /approve before editing.", "warning");
 			}
 		}
 	});
@@ -342,6 +456,9 @@ export default function planMode(pi: ExtensionAPI) {
 		mode = "build";
 		todos = [];
 		toolsBefore = undefined;
+		approved = false;
+		strict = false;
+		strictLockedByEnv = false;
 	});
 }
 
