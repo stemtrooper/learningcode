@@ -311,6 +311,29 @@ function parseRemoteCommand(argv) {
 	return { command: argv[0], subcommand: words[0] ?? null, flags };
 }
 
+/**
+ * A `--port` value as a number, or undefined when the flag is absent.
+ *
+ * A value-less `--port` parses to `true`, and `Number(true)` is NaN — which
+ * reached `httpServer.listen(NaN)` and threw a RangeError stack at the student.
+ * Reject it with a sentence instead.
+ */
+function portFlag(value) {
+	if (value === undefined) return undefined;
+	const text = String(value);
+	if (!/^\d+$/.test(text)) {
+		throw new UserError(`--port needs a number, like \`--port 8080\`.`);
+	}
+	return Number(text);
+}
+
+/** A string flag value, or undefined when absent. Rejects a value-less `--server`. */
+function textFlag(value, name) {
+	if (value === undefined) return undefined;
+	if (value === true) throw new UserError(`${name} needs a value, like \`${name} <value>\`.`);
+	return String(value);
+}
+
 async function runRemoteCommand({ command, subcommand, flags }) {
 	if (flags.help || flags.h) {
 		process.stdout.write(REMOTE_HELP);
@@ -319,8 +342,8 @@ async function runRemoteCommand({ command, subcommand, flags }) {
 
 	if (command === "remote-server") {
 		await runRemoteServer({
-			port: flags.port ? Number(flags.port) : undefined,
-			host: flags.host,
+			port: portFlag(flags.port),
+			host: textFlag(flags.host, "--host"),
 		});
 		return;
 	}
@@ -352,13 +375,13 @@ async function runRemoteCommand({ command, subcommand, flags }) {
 			const tunnel = Boolean(flags.tunnel) || (local && flags["no-tunnel"] !== true);
 			await runRemote({
 				cwd: process.cwd(),
-				serverUrl: flags.server,
-				enrollKey: flags.key,
+				serverUrl: textFlag(flags.server, "--server"),
+				enrollKey: textFlag(flags.key, "--key"),
 				resume: Boolean(flags.resume),
 				serve: Boolean(flags.serve) || local,
 				tunnel,
-				port: flags.port ? Number(flags.port) : undefined,
-				host: flags.host,
+				port: portFlag(flags.port),
+				host: textFlag(flags.host, "--host"),
 			});
 			return;
 		}

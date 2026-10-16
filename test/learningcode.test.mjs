@@ -251,6 +251,29 @@ test("doctor is read-only: it reports the missing token instead of prompting", a
   assert.match(stdout, /^Providers/m, "still prints the full report");
 });
 
+test("remote flags without a value fail with a sentence, not a stack trace", async () => {
+  const dir = await scratch();
+  globalThis.__lcDir = dir;
+  // A value-less flag parses to `true`. That used to reach listen(NaN) (RangeError)
+  // or `true.replace(...)` (TypeError), printing a stack at a student.
+  for (const args of [
+    ["remote-server", "--port"],
+    ["remote-server", "--port", "abc"],
+    ["remote", "--server"],
+  ]) {
+    let err;
+    try {
+      await launch(args);
+    } catch (e) {
+      err = e;
+    }
+    assert.ok(err, "the bad flag must fail the run: " + args.join(" "));
+    const output = `${err.stdout ?? ""}${err.stderr ?? ""}`;
+    assert.match(output, /needs a (number|value)/, "student-language message: " + output);
+    assert.doesNotMatch(output, /RangeError|TypeError|at Object\./, "no stack trace: " + output);
+  }
+});
+
 test("--list-models never demands a token, even with Spark down", async () => {
   const dir = await scratch();
   globalThis.__lcDir = dir;
