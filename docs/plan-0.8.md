@@ -1,7 +1,8 @@
 # LearningCode 0.8 — student-first launch readiness
 
 Status: **in progress — 0.8.x hardened; workstream 3 (never lose work) is
-done as of 0.9.2; workstreams 4–6 remain.** Audience: students,
+done as of 0.9.2; workstream 4 (plan templates) started in 0.10.0, with the
+strict preset still to come; workstreams 5–6 remain.** Audience: students,
 explicitly not teachers or parents. Every item is judged by one
 question: does it make a student's worst day better? If it serves an
 adult's dashboard instead, it belongs in 0.9 or later.
@@ -56,18 +57,18 @@ contains cause + action + wait.
 Tests: kill-and-resume round trip preserves transcript + checklist;
 undo matrix over the mutating tools.
 
-### 4. Plan mode as curriculum (training wheels) — NOT STARTED
+### 4. Plan mode as curriculum (training wheels) — IN PROGRESS
 
-- Plan templates for common assignments (`/plan explain-bug`,
+- [x] Plan templates for common assignments (`/plan explain-bug`,
   `/plan implement-fn`): pre-shaped prompts that teach *how* to plan,
-  not just what to type.
-- Optional strict preset (student- or lab-configured): plan must exist
+  not just what to type. (0.10.0)
+- [ ] Optional strict preset (student- or lab-configured): plan must exist
   and be approved before any edit tool unblocks. Off by default;
   training wheels, not handcuffs.
 - Reuses 0.7 machinery: checklist, footer counts, `/approve`, BUILD
   progress. No new tracking layer.
 
-Tests: template expansion, strict-mode block/unblock transitions.
+Tests: template expansion (done); strict-mode block/unblock transitions (todo).
 
 ### 5. Phone as a real client (remote parity)
 

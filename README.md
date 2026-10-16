@@ -484,6 +484,13 @@ often, and a student's install must not change underneath them mid-term.
 
 ## Changelog
 
+* **0.10.0** — guided plans and a screen that tells you where you are:
+  `/plan explain-bug [about]` and `/plan implement-fn [about]` enter Plan mode
+  with a pre-shaped prompt that teaches *how* to plan (`/plan` alone still
+  toggles). The working folder now leads the terminal tab title and shows in the
+  footer, so several open windows are told apart. `learningcode remote` shows a
+  live line of what the phone is running on the computer — the current tool and
+  the file it touched, the model, seats and queue — with a short scrolling log.
 * **0.7.8** — CommandCode is a provider you can log in to from learningcode:
   `learningcode --login-provider commandcode` (your key is entered without echo),
   or `/login` inside learningcode. Its ~90 OpenAI- and Anthropic-compatible
