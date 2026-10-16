@@ -41,6 +41,7 @@ import { ensureThemes, preferredTheme } from "../lib/themes.mjs";
 import {
 	hasToken,
 	looksLikeToken,
+	peekToken,
 	promptSecret,
 	readCachedToken,
 	resolveToken,
@@ -397,13 +398,24 @@ async function main() {
 		return;
 	}
 
-	// learningcode doctor: a health check (read-only) with an optional --fix that clears a rejected token cache. Never prints a key.
+	// learningcode doctor: a health check (read-only) with an optional --fix that
+	// clears a rejected token cache. Never prints a key, and never prompts: a
+	// read-only report must run unattended (scripts, CI, a teacher's laptop), so
+	// it only reaches Spark when a token is already available. peekToken() is the
+	// non-prompting resolver; resolveToken() here would block on a secret prompt.
 	if (argv[0] === "doctor") {
+		const dir = agentDir();
 		const checkSpark = async (url) => {
-			const token = (await resolveToken(agentDir())).token;
+			const token = await peekToken(dir);
+			if (!token) return { ok: null, reason: "no token cached - run `learningcode --login`" };
 			return checkEndpoint(url, token);
 		};
-process.stdout.write(await doctorReport({ checkSpark })); if (argv[1] === "--fix") { const dir = agentDir(); const fixed = await fixStaleToken(dir, (t) => checkEndpoint(sparkBaseUrl(), t), () => readCachedToken(dir)); process.stdout.write((fixed ?? "Nothing to fix - doctor is clean.") + "\n"); } return;
+		process.stdout.write(await doctorReport({ checkSpark }));
+		if (argv[1] === "--fix") {
+			const fixed = await fixStaleToken(dir, (t) => checkEndpoint(sparkBaseUrl(), t), () => readCachedToken(dir));
+			process.stdout.write((fixed ?? "Nothing to fix - doctor is clean.") + "\n");
+		}
+		return;
 	}
 
 	const { own, toPi, explicitToken, baseUrl } = parseArgs(argv);

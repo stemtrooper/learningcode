@@ -239,6 +239,18 @@ test("a non-Spark --model needs no Spark token and skips the Spark health check"
   assert.doesNotMatch(stdout, /Paste your Spark API token/);
 });
 
+test("doctor is read-only: it reports the missing token instead of prompting", async () => {
+  const dir = await scratch();
+  globalThis.__lcDir = dir;
+  const { stdout } = await launch(["doctor"]);
+
+  // The regression: doctor called resolveToken(), so on a machine with no
+  // cached token it blocked on the masked prompt and hung any script or CI run.
+  assert.doesNotMatch(stdout, /Paste your Spark API token/, "must not prompt for a secret");
+  assert.match(stdout, /no token cached/, "explains why Spark was not reached");
+  assert.match(stdout, /^Providers/m, "still prints the full report");
+});
+
 test("--list-models never demands a token, even with Spark down", async () => {
   const dir = await scratch();
   globalThis.__lcDir = dir;
@@ -918,6 +930,40 @@ test("only a spark_live_ value is treated as a cached Spark token", async () => 
     42,
   ]) {
     assert.equal(isSparkToken(wrong), false, "must reject " + JSON.stringify(wrong));
+  }
+});
+
+test("peekToken resolves without prompting and refuses a non-Spark cache", async () => {
+  // doctor (and anything else advertised as read-only) uses peekToken so it can
+  // run unattended. resolveToken would block on a secret prompt when nothing is
+  // cached, which hangs a script or CI run.
+  const { peekToken } = await import("../lib/token.mjs");
+  const { TOKEN_FILE, TOKEN_ENV } = await import("../lib/config.mjs");
+  const dir = await scratch();
+  const saved = { LEARNINGCODE_TOKEN: process.env.LEARNINGCODE_TOKEN, [TOKEN_ENV]: process.env[TOKEN_ENV] };
+  delete process.env.LEARNINGCODE_TOKEN;
+  delete process.env[TOKEN_ENV];
+  try {
+    assert.equal(await peekToken(dir), null, "nothing anywhere resolves to null, never a prompt");
+
+    assert.equal(await peekToken(dir, "  spark_live_flag  "), "spark_live_flag", "explicit wins");
+
+    process.env[TOKEN_ENV] = "spark_live_env";
+    assert.equal(await peekToken(dir), "spark_live_env", "environment next");
+    delete process.env[TOKEN_ENV];
+
+    await writeFile(join(dir, TOKEN_FILE), "spark_live_cached\n", "utf-8");
+    assert.equal(await peekToken(dir), "spark_live_cached", "cache last");
+
+    // A leftover non-Spark key would be sent to Spark and reported as a 401 that
+    // looks like a revoked token, so peekToken must not return it.
+    await writeFile(join(dir, TOKEN_FILE), "oc_sk_leftover\n", "utf-8");
+    assert.equal(await peekToken(dir), null, "non-Spark cache is not a token");
+  } finally {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
   }
 });
 
