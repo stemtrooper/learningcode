@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Key } from "@earendil-works/pi-tui";
+import { agentDir } from "../lib/config.mjs";
 import {
 	addTodoItem,
 	completeTodoItem,
@@ -9,6 +10,7 @@ import {
 	markCompletedSteps,
 	planToolSet,
 } from "../lib/plan-mode.mjs";
+import { loadPlanTodos, savePlanTodos } from "../lib/plan-store.mjs";
 import { safeFg } from "../lib/theme.mjs";
 
 /**
@@ -20,7 +22,12 @@ import { safeFg } from "../lib/theme.mjs";
  *
  * The footer owns the mode indicator (it reads the `plan-mode` status this
  * extension sets). The checklist widget shows above the editor, wide windows
- * only. No persistence: every session starts in Build.
+ * only.
+ *
+ * The checklist is checkpointed per session (lib/plan-store.mjs): resuming a
+ * conversation brings the student's progress back. The mode itself is not
+ * restored — every session still starts in Build, so a resume can never leave
+ * a student blocked from editing by surprise.
  */
 
 type Todo = { step: number; text: string; completed: boolean };
@@ -54,6 +61,19 @@ export default function planMode(pi: ExtensionAPI) {
 	let todos: Todo[] = [];
 	let toolsBefore: string[] | undefined;
 
+	// The session whose checklist we are editing. Pi keeps the id stable across
+	// `-c` / `--resume`. The extension tests pass a ctx with no sessionManager,
+	// so the lookup is optional and persistence simply no-ops there.
+	const sessionIdOf = (ctx: ExtensionContext): string | null =>
+		ctx.sessionManager?.getSessionId?.() ?? null;
+
+	/** Checkpoint the checklist for this session. Never throws. */
+	const persist = (ctx: ExtensionContext): Promise<void> => {
+		const id = sessionIdOf(ctx);
+		if (!id) return Promise.resolve();
+		return savePlanTodos(agentDir(), id, todos);
+	};
+
 	const refresh = (ctx: ExtensionContext) => {
 		statusFor(ctx, mode, todos);
 		// setWidget is TUI-only; under RPC (phone) it may be inert or throw —
@@ -74,6 +94,10 @@ export default function planMode(pi: ExtensionAPI) {
 			/* RPC mode: no widgets — /todos notifies carry the checklist. */
 		}
 		if (mode === "plan") pi.setActiveTools(planToolSet(toolsBefore ?? pi.getActiveTools()));
+		// Every checklist/mode change goes through refresh(), so the checkpoint is
+		// always current — a crash or a dropped Wi-Fi never costs more than the step
+		// in flight.
+		void persist(ctx);
 	};
 
 	const setMode = (next: "build" | "plan", ctx: ExtensionContext, silent = false) => {
@@ -255,14 +279,28 @@ export default function planMode(pi: ExtensionAPI) {
 	});
 
 	pi.on("session_start", async (_event, ctx) => {
-		// Always start in Build, including resume/fork.
+		// Always start in Build, including resume/fork. The checklist, though,
+		// belongs to the conversation and is brought back from its checkpoint.
 		mode = "build";
-		todos = [];
 		toolsBefore = undefined;
-		if (ctx.hasUI) refresh(ctx);
+		const id = sessionIdOf(ctx);
+		todos = id ? await loadPlanTodos(agentDir(), id) : [];
+		if (ctx.hasUI) {
+			refresh(ctx);
+			if (todos.length > 0) {
+				const done = todos.filter((t) => t.completed).length;
+				ctx.ui.notify(
+					`Restored your plan checklist — ${todos.length} step${todos.length === 1 ? "" : "s"}${done ? `, ${done} done` : ""}.`,
+					"info",
+				);
+			}
+		}
 	});
 
-	pi.on("session_shutdown", async () => {
+	pi.on("session_shutdown", async (_event, ctx) => {
+		// Final flush before the in-memory state is dropped, so a step marked a
+		// moment ago is never lost to a quit or a session switch.
+		await persist(ctx);
 		mode = "build";
 		todos = [];
 		toolsBefore = undefined;

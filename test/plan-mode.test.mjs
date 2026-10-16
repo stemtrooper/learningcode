@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createJiti } from "jiti";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
 	PLAN_READ_TOOLS,
 	addTodoItem,
@@ -384,4 +387,89 @@ test("agent_end parses real-shaped AgentMessage entries into footer counts", asy
 		ctx,
 	);
 	assert.equal(statuses.get("plan-mode"), "plan 0/2", "footer shows parsed counts");
+});
+
+/**
+ * Build a fresh extension instance around a fixed session id, backed by a temp
+ * agent dir. Each call is a new "process": its own closure state, same session.
+ */
+function startExtension(mod, sessionId) {
+	const handlers = new Map();
+	const commands = new Map();
+	const statuses = new Map();
+	const notices = [];
+	const ctx = {
+		hasUI: true,
+		mode: "tui",
+		sessionManager: { getSessionId: () => sessionId },
+		ui: {
+			setStatus: (k, v) => (v === undefined ? statuses.delete(k) : statuses.set(k, v)),
+			setWidget: () => {},
+			notify: (m) => notices.push(m),
+		},
+	};
+	const pi = {
+		on: (event, fn) => handlers.set(event, fn),
+		registerCommand: (name, opts) => commands.set(name, opts),
+		registerShortcut: () => {},
+		getActiveTools: () => ["read", "bash", "edit", "write", "grep", "find", "ls"],
+		setActiveTools: () => {},
+	};
+	mod.default(pi);
+	return { handlers, commands, statuses, notices, ctx };
+}
+
+test("a resumed session brings the checklist back, in Build, with a confirm", async () => {
+	const jiti = createJiti(import.meta.url);
+	const mod = await jiti.import("../extensions/plan-mode.ts");
+	const dir = await mkdtemp(join(tmpdir(), "lc-plan-resume-"));
+	const saved = process.env.LEARNINGCODE_DIR;
+	process.env.LEARNINGCODE_DIR = dir;
+	try {
+		// Session A: plan three steps, complete one, then quit.
+		const a = startExtension(mod, "session-a");
+		await a.handlers.get("session_start")({ reason: "startup" }, a.ctx);
+		await a.commands.get("plan").handler("", a.ctx);
+		await a.commands.get("todo").handler("add Survey the code", a.ctx);
+		await a.commands.get("todo").handler("add Fix the bug", a.ctx);
+		await a.commands.get("todo").handler("done 1", a.ctx);
+		await a.handlers.get("session_shutdown")({ reason: "quit" }, a.ctx);
+
+		// Session A resumes in a fresh process: the checklist is back, in Build.
+		const b = startExtension(mod, "session-a");
+		await b.handlers.get("session_start")({ reason: "resume", previousSessionFile: "x" }, b.ctx);
+		assert.equal(b.statuses.get("plan-mode"), "build 1/2", "progress restored into Build");
+		assert.match(b.notices.join("\n"), /Restored your plan checklist/);
+
+		// A different session starts clean — the checkpoint is per conversation.
+		const c = startExtension(mod, "session-b");
+		await c.handlers.get("session_start")({ reason: "startup" }, c.ctx);
+		assert.equal(c.statuses.has("plan-mode"), false, "a new session has no checklist");
+		assert.doesNotMatch(c.notices.join("\n"), /Restored/);
+	} finally {
+		if (saved === undefined) delete process.env.LEARNINGCODE_DIR;
+		else process.env.LEARNINGCODE_DIR = saved;
+	}
+});
+
+test("clearing the checklist leaves nothing to restore", async () => {
+	const jiti = createJiti(import.meta.url);
+	const mod = await jiti.import("../extensions/plan-mode.ts");
+	const dir = await mkdtemp(join(tmpdir(), "lc-plan-clear-"));
+	const saved = process.env.LEARNINGCODE_DIR;
+	process.env.LEARNINGCODE_DIR = dir;
+	try {
+		const a = startExtension(mod, "session-c");
+		await a.handlers.get("session_start")({ reason: "startup" }, a.ctx);
+		await a.commands.get("plan").handler("", a.ctx);
+		await a.commands.get("todo").handler("add Something", a.ctx);
+		await a.commands.get("todo").handler("clear", a.ctx);
+
+		const b = startExtension(mod, "session-c");
+		await b.handlers.get("session_start")({ reason: "resume" }, b.ctx);
+		assert.equal(b.statuses.has("plan-mode"), false, "a cleared checklist does not come back");
+	} finally {
+		if (saved === undefined) delete process.env.LEARNINGCODE_DIR;
+		else process.env.LEARNINGCODE_DIR = saved;
+	}
 });
