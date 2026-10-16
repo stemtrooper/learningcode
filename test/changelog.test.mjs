@@ -54,6 +54,16 @@ test("the notice tells students the command to type", () => {
 	assert.match(text, /--resume/);
 });
 
+test("the version in package.json has a changelog entry", async () => {
+	// The changelog drives the once-per-upgrade "what's new" notice. A version
+	// bump with no entry means students install an update and see nothing.
+	const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf-8"));
+	assert.ok(
+		CHANGELOG.some((item) => item.version === pkg.version),
+		`no CHANGELOG entry for ${pkg.version}`,
+	);
+});
+
 test("an unwritable agent folder does not stop learningcode from starting", async () => {
 	// Pointing the marker at a path under a file makes the write fail; the call
 	// must still resolve, because a read-only home must never block a student.
