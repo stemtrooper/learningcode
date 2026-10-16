@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { foregroundAnsi, rgbColor } from "@earendil-works/pi-tui";
+import { safeFg } from "../lib/theme.mjs";
 
 /**
  * LEARNINGCODE startup banner.
@@ -46,7 +47,7 @@ type HeaderComponent = { render(width: number): string[] };
  * Two values because the logo ships two: the darker cyan holds contrast on a
  * white field, the brighter one on black.
  *
- * Note this must not go through `theme.fg()`. That resolves theme *tokens*, and
+ * Note this must not go through `safeFg(theme, )`. That resolves theme *tokens*, and
  * `Theme.tokenAnsi` throws `Unknown theme color: #29c8f2` for anything that is
  * not one, so a raw hex there crashes the header at render time.
  * `foregroundAnsi` takes a colour value directly, and unlike a hand-rolled escape
@@ -127,21 +128,21 @@ export function createBanner(theme: ThemeLike): HeaderComponent {
 		render(width: number): string[] {
 			if (width >= MIN_FULL_WIDTH) {
 				const lines = ["", ...full.map((line) => ink(PAD + line))];
-				lines.push(theme.fg("border", PAD + "═".repeat(bannerWidth())));
-				lines.push(theme.fg("muted", PAD + TAGLINE));
-				lines.push(theme.fg("dim", PAD + HINTS));
+				lines.push(safeFg(theme, "border", PAD + "═".repeat(bannerWidth())));
+				lines.push(safeFg(theme, "muted", PAD + TAGLINE));
+				lines.push(safeFg(theme, "dim", PAD + HINTS));
 				lines.push("");
 				return lines;
 			}
 
 			if (width >= MIN_CONDENSED_WIDTH) {
 				const lines = ["", ...small.map((line) => ink(PAD + line))];
-				lines.push(theme.fg("muted", PAD + TAGLINE));
+				lines.push(safeFg(theme, "muted", PAD + TAGLINE));
 				lines.push("");
 				return lines;
 			}
 
-			return ["", ink(PAD + "learningcode"), theme.fg("muted", PAD + TAGLINE)];
+			return ["", ink(PAD + "learningcode"), safeFg(theme, "muted", PAD + TAGLINE)];
 		},
 	};
 }

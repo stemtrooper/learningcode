@@ -9,6 +9,7 @@ import {
 	markCompletedSteps,
 	planToolSet,
 } from "../lib/plan-mode.mjs";
+import { safeFg } from "../lib/theme.mjs";
 
 /**
  * Plan / Build mode. Shift+Tab (or /plan, the phone path) toggles between:
@@ -45,7 +46,7 @@ function todoLines(todos: Todo[], theme: { fg(token: string, text: string): stri
 	const done = todos.filter((t) => t.completed).length;
 	const current = todos.find((t) => !t.completed);
 	const step = current ? `  ● ${current.text}` : "  ✓ all done";
-	return [theme.fg("muted", `Plan ${done}/${todos.length}`) + theme.fg("dim", step)];
+	return [safeFg(theme, "muted", `Plan ${done}/${todos.length}`) + safeFg(theme, "dim", step)];
 }
 
 export default function planMode(pi: ExtensionAPI) {

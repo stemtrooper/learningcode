@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { inverseBox, safeFg } from "../lib/theme.mjs";
 
 /**
  * A persistent footer showing what a Spark student actually needs to know:
@@ -43,7 +44,7 @@ const SPIN_MS = 120;
  * Blue → green → cyan, one step per spinner tick.
  *
  * These are theme *color keys*, not the `vars` they resolve to. Pi's theme
- * schema has no blue/green/cyan keys, and `theme.fg()` throws on anything that
+ * schema has no blue/green/cyan keys, and `safeFg(theme, )` throws on anything that
  * is not a key — so passing a var name such as "green" or "info" takes down the
  * whole render loop. In the bundled TLC themes `accent` is the blue, `success`
  * the green, and `mdCode` the cyan (`info`).
@@ -52,31 +53,6 @@ const SPIN_MS = 120;
  * uncoloured text instead of crashing the agent.
  */
 const COLOR_CYCLE = ["accent", "success", "mdCode"];
-
-/** `theme.fg()` that never throws — an unknown token falls back to plain text. */
-function safeFg(theme: ThemeLike, token: string, text: string): string {
-  try {
-    return theme.fg(token, text);
-  } catch {
-    return text;
-  }
-}
-
-/**
- * A solid badge: the label is drawn as reverse video, so the cycle colour fills
- * the block and the text reads as negative space (it takes the terminal
- * background). This is how the status gets a filled box without a dedicated
- * background token — Pi's schema has no blue/green/cyan background slots, and a
- * `bg()` token would drag in one of the grey surfaces instead.
- *
- * Falls back to the raw SGR reverse attribute when the theme does not expose
- * `inverse()`, so a minimal theme (and the tests) still get the box.
- */
-function inverseBox(theme: ThemeLike, token: string, text: string): string {
-  const colored = safeFg(theme, token, text);
-  if (typeof theme.inverse === "function") return theme.inverse(colored);
-  return `\x1b[7m${colored}\x1b[27m`;
-}
 
 type Quota = {
   tokensUsed: number;
@@ -299,7 +275,7 @@ export default function sparkFooter(pi: ExtensionAPI) {
           // replaced by setFooter, so the active model must live here or an
           // opencode default shows nowhere.
           const fullId = activeModelId(sessionCtx);
-          const modelLabel = theme.fg("warning", `  ·  ${width >= 70 ? fullId : shortModelId(fullId)}`);
+          const modelLabel = safeFg(theme, "warning", `  ·  ${width >= 70 ? fullId : shortModelId(fullId)}`);
           const maybeModel = narrow ? "" : modelLabel;
           // Plan mode sets the `plan-mode` status ("plan" or "plan done/total");
           // Build mode keeps "build done/total" while a checklist is active.
@@ -311,10 +287,10 @@ export default function sparkFooter(pi: ExtensionAPI) {
           const buildAllDone = buildMatch != null && buildMatch[1] === buildMatch[2];
           const modeLabel =
             planStatus != null && planStatus.startsWith("plan")
-              ? theme.fg("warning", `  ·  PLAN${planCount ? ` ${planCount}` : ""}${planAllDone ? " ✓" : ""}`)
+              ? safeFg(theme, "warning", `  ·  PLAN${planCount ? ` ${planCount}` : ""}${planAllDone ? " ✓" : ""}`)
               : buildCount
-                ? theme.fg("dim", `  ·  BUILD ${buildCount}${buildAllDone ? " ✓" : ""}`)
-                : theme.fg("dim", "  ·  build");
+                ? safeFg(theme, "dim", `  ·  BUILD ${buildCount}${buildAllDone ? " ✓" : ""}`)
+                : safeFg(theme, "dim", "  ·  build");
           // Every path ends with the exit hint. Students asked how to quit,
           // and the footer is the one line that is always on screen.
           // (ctrl+c clears the editor; pressed twice, or on an empty editor
@@ -329,7 +305,7 @@ export default function sparkFooter(pi: ExtensionAPI) {
           // The status is drawn as a filled badge — a box in the cycling
           // colour with the label punched out (see `inverseBox`). The box
           // colour steps through blue → green → cyan on the spinner tick.
-          const idleHints = theme.fg(
+          const idleHints = safeFg(theme, 
             "dim",
             narrow
               ? "  ctrl+c exit  ·  esc interrupt"
@@ -338,29 +314,29 @@ export default function sparkFooter(pi: ExtensionAPI) {
           const statusText = working ? "Building Your Project" : "Planning Your Work";
           const hints = active
             ? inverseBox(theme, COLOR_CYCLE[colorIndex], ` ${SPINNER[frame]} ${statusText} `) +
-              (working ? theme.fg("muted", "  ·  esc to interrupt") : "")
+              (working ? safeFg(theme, "muted", "  ·  esc to interrupt") : "")
             : idleHints;
 
           const spendLabel = spendText(spend);
-          const maybeSpend = narrow || !spendLabel ? "" : theme.fg("dim", `  ·  ${spendLabel}`);
+          const maybeSpend = narrow || !spendLabel ? "" : safeFg(theme, "dim", `  ·  ${spendLabel}`);
 
           // Nothing to say off Spark, or no token: say so rather than draw a bar
           // full of empties that reads as "you have spent nothing".
           if (!token()) {
-            return [theme.fg("muted", "  not on Spark") + maybeModel + modeLabel + maybeSpend, hints];
+            return [safeFg(theme, "muted", "  not on Spark") + maybeModel + modeLabel + maybeSpend, hints];
           }
-          if (!quota) return [theme.fg("dim", "  quota n/a") + maybeModel + modeLabel + maybeSpend, hints];
+          if (!quota) return [safeFg(theme, "dim", "  quota n/a") + maybeModel + modeLabel + maybeSpend, hints];
 
           if (quota.aiEnabled === false) {
-            return [theme.fg("error", "  AI disabled for your account — ask your teacher") + maybeModel + modeLabel + maybeSpend, hints];
+            return [safeFg(theme, "error", "  AI disabled for your account — ask your teacher") + maybeModel + modeLabel + maybeSpend, hints];
           }
 
           // No ceiling: no meter and no percentage, because a full bar implies a
           // limit that does not exist.
           if (isUnlimited(quota)) {
             return [
-              theme.fg("dim", `  ${Math.round(quota.tokensUsed / 1000)}k used today`) +
-                theme.fg("muted", "  ·  unlimited") + maybeModel + modeLabel + maybeSpend,
+              safeFg(theme, "dim", `  ${Math.round(quota.tokensUsed / 1000)}k used today`) +
+                safeFg(theme, "muted", "  ·  unlimited") + maybeModel + modeLabel + maybeSpend,
               hints,
             ];
           }
@@ -369,22 +345,22 @@ export default function sparkFooter(pi: ExtensionAPI) {
           // apply. Do not turn null into zero or show a misleading /0K allowance.
           if (quota.dailyTokenLimit === null || quota.dailyTokenLimit === undefined) {
             return [
-              theme.fg("dim", `  ${Math.round(quota.tokensUsed / 1000)}k used today`) +
-                theme.fg("muted", "  ·  no daily token cap") + maybeModel + modeLabel + maybeSpend,
+              safeFg(theme, "dim", `  ${Math.round(quota.tokensUsed / 1000)}k used today`) +
+                safeFg(theme, "muted", "  ·  no daily token cap") + maybeModel + modeLabel + maybeSpend,
               hints,
             ];
           }
 
           const { tokensUsed, dailyTokenLimit } = quota;
           const limit = dailyTokenLimit;
-          const bar = theme.fg("accent", meter(tokensUsed, limit));
-          const percent = theme.fg("muted", pct(tokensUsed, limit));
+          const bar = safeFg(theme, "accent", meter(tokensUsed, limit));
+          const percent = safeFg(theme, "muted", pct(tokensUsed, limit));
 
           // Narrow terminals keep the bar, the percentage and the mode only;
           // the absolute counts, model and spend are the droppable parts.
           if (narrow) return [`  ${bar} ${percent}` + modeLabel, hints];
 
-          const numbers = theme.fg(
+          const numbers = safeFg(theme, 
             "dim",
             `${Math.round(tokensUsed / 1000)}k / ${Math.round(limit / 1000)}k today`,
           );
