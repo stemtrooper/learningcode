@@ -89,3 +89,36 @@ test("no session or no journal is a clean no-op", async () => {
 	await recordChange(agent, "", "/tmp", "x");
 	assert.equal(journalDir(agent, ""), join(agent, "undo", "session"));
 });
+
+test("a target outside the project is never recorded", async () => {
+	const agent = await scratch();
+	const cwd = await scratch();
+	const outside = join(await scratch(), "elsewhere.txt");
+	await writeFile(outside, "original", "utf-8");
+
+	// Absolute path outside cwd, and a relative escape: both declined, and
+	// nothing is written for a journal that has nothing to say.
+	await recordChange(agent, "s1", cwd, outside);
+	await recordChange(agent, "s1", cwd, join("..", "escape.txt"));
+	assert.equal(await loadJournal(agent, "s1"), null);
+});
+
+test("restore skips a manifest entry outside the project", async () => {
+	const agent = await scratch();
+	const cwd = await scratch();
+	const outside = join(await scratch(), "victim.txt");
+	await writeFile(outside, "keep me", "utf-8");
+
+	// A legacy or hand-edited manifest naming a stranger's file must not touch it.
+	const dir = journalDir(agent, "legacy");
+	await mkdir(dir, { recursive: true });
+	await writeFile(
+		join(dir, "manifest.json"),
+		`${JSON.stringify({ cwd, entries: [{ path: outside, kind: "modified", backup: "nope" }] })}\n`,
+		"utf-8",
+	);
+
+	const result = await restoreJournal(agent, "legacy");
+	assert.deepEqual(result.skipped, [outside]);
+	assert.equal(await readFile(outside, "utf-8"), "keep me");
+});

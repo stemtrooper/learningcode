@@ -12,6 +12,7 @@ leftover `console.*`/`TODO`s.
 
 Baseline at audit time: 268 tests, 267 pass, 1 skip, 0 fail. After the P1 fixes
 below: 272 tests. After the P2 fixes (0.9.4): 280 tests, 279 pass, 1 skip, 0 fail.
+After the P3 fixes (0.9.5): 286 tests, 285 pass, 1 skip, 0 fail.
 
 Severity key: **P1** = a student can hit it on a normal day (correctness, safety,
 or a stated product rule); **P2** = real but narrower (robustness, abuse of an
@@ -78,35 +79,49 @@ install proceeds as before rather than being blocked. Tests:
 
 ---
 
-## P3 — polish and trade-offs worth naming
+## P3 — cleared in 0.9.5
 
-- **P3.1 Frame direction is not enforced.** `AGENT_FRAMES`/`PHONE_FRAMES` are
-  exported from `protocol.mjs` but unused; a frame valid for one side is silently
-  dropped (`default: return`) on the other. That contradicts the module's own
-  "reject, never ignore" doctrine. Cheap to fix: assert direction and reply with
-  an `error` frame.
-- **P3.2 Footer polls can overlap.** `setInterval(refresh, POLL_MS)`
-  (`footer.ts`) fires regardless of an in-flight refresh, so a slow Spark can
-  stack requests. Now bounded by the P1.2 timeout; an in-flight guard would make
-  it exact.
-- **P3.3 The ≥80% startup warning omits the reset.** Now that `quotaResetLine()`
-  exists, the warning (`spark-quota.ts`) can name Friday 00:00 too.
-- **P3.4 Config files use the default umask.** `models.json`, `settings.json`,
-  and `keybindings.json` are written without an explicit mode. Their contents are
-  env references and preferences, not secrets, so this is acceptable — noted for
-  completeness (tokens and remote state are already `0600`).
-- **P3.5 Undo restores absolute paths from the manifest.** `restoreJournal`
-  trusts each recorded path; a tampered manifest could touch a file outside the
-  project. Intended behaviour is "undo what the agent touched, wherever", so
-  low risk — a `cwd`-boundary check on restore would close it.
-- **P3.6 Only the first destructive kind is reported.** `destructiveMatch()`
-  returns the first pattern that hits, so a compound `rm -rf … && git push
-  --force` reports only "deletes files". The student still approves the whole
-  command, so there is no escalation — but "always allow" then stores just that
-  kind.
-- **P3.7 No dependency vulnerability scan in CI.** The workflow pins deps and
-  runs the suite + installer on linux/macos/windows, but nothing runs
-  `npm audit`/Dependabot.
+### P3.1 Frame direction is not enforced
+`AGENT_FRAMES`/`PHONE_FRAMES` are exported from `protocol.mjs` but were unused; a
+frame valid for one side was silently dropped (`default: return`) on the other,
+contradicting the module's own "reject, never ignore" doctrine.
+**Fixed:** `#onAgent`/`#onPhone` reject a frame the sender's side may not send
+with an `error` frame and a 1008 close. Tests: `test/remote-server.test.mjs`.
+
+### P3.2 Footer polls can overlap
+`setInterval(refresh, POLL_MS)` (`footer.ts`) fired regardless of an in-flight
+refresh, so a slow Spark could stack requests.
+**Fixed:** an in-flight guard makes the poll skip a tick rather than stack.
+
+### P3.3 The ≥80% startup warning omits the reset
+**Fixed:** the warning (`spark-quota.ts`) now names the reset through
+`quotaResetLine()`, so a student near the limit knows when it comes back.
+
+### P3.4 Config files use the default umask
+`models.json`, `settings.json`, and `keybindings.json` were written without an
+explicit mode.
+**Fixed:** all three are written `0600` (with a `chmod` for files created
+before), matching tokens and remote state. The contents are not secrets, but the
+agent dir now has one rule.
+
+### P3.5 Undo restores absolute paths from the manifest
+`restoreJournal` trusted each recorded path; a tampered manifest could touch a
+file outside the project.
+**Fixed:** `recordChange` declines a target outside the project `cwd`, and
+`restoreJournal` skips any legacy manifest entry that names one. Tests:
+`test/undo-journal.test.mjs`.
+
+### P3.6 Only the first destructive kind is reported
+`destructiveMatch()` returned the first pattern that hit, so a compound command
+reported and remembered only one danger.
+**Fixed:** `destructiveMatches()` reports every kind, the prompt names them all
+("deletes files, runs as administrator"), and "Always allow" stores each. A later
+command is skipped only when every danger it carries is already allowed. Tests:
+`test/approval.test.mjs`, `test/approval-always.test.mjs`.
+
+### P3.7 No dependency vulnerability scan in CI
+**Fixed:** the workflow runs `npm audit --omit=dev --audit-level=high` on every
+run, and `.github/dependabot.yml` keeps npm and GitHub Actions current weekly.
 
 ---
 

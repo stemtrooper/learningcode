@@ -1,0 +1,17 @@
+version: 2
+
+# Keep the two supply chains that reach a student's machine current: the runtime
+# dependencies the CLI ships, and the actions the CI workflow runs. Weekly, so
+# the queue stays reviewable rather than a daily wall of PRs.
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

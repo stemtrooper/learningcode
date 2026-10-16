@@ -121,6 +121,61 @@ test("a phone message reaches the agent and its response comes back", async () =
 	}
 });
 
+test("a frame from the wrong side is rejected, never ignored", async () => {
+	const { server, agentUrl, uiUrl } = await startServer();
+	try {
+		const agent = await connectAgent(agentUrl, "s-direction");
+		const phone = await connectPhone(uiUrl, "s-direction");
+		await waitFor(phone, "attached");
+
+		// "attach" is a phone frame. An agent sending it has confused the
+		// protocol; rejecting and closing is the doctrine, never ignoring.
+		const frames = record(agent);
+		const closed = new Promise((resolve) => agent.on("close", (code) => resolve(code)));
+		send(agent, { type: "attach", sessionId: "s-direction", token: PHONE_TOKEN });
+
+		assert.equal(await closed, 1008, "closed as a policy violation");
+		assert.equal(frames.at(-1).type, "error");
+		assert.match(frames.at(-1).message, /may not send "attach"/);
+	} finally {
+		await server.close();
+	}
+});
+
+test("a phone cannot send a computer-only frame", async () => {
+	const { server, agentUrl, uiUrl } = await startServer();
+	try {
+		const agent = await connectAgent(agentUrl, "s-direction-phone");
+		// Registered before the phone connects: attaching itself sends a
+		// presence, and the one we want is the later phones:0 after the close.
+		const gone = new Promise((resolve, reject) => {
+			const timer = setTimeout(() => reject(new Error("no phones:0 presence")), 4000);
+			agent.on("message", (raw) => {
+				const frame = JSON.parse(raw.toString());
+				if (frame.type === "presence" && frame.phones === 0) {
+					clearTimeout(timer);
+					resolve(frame);
+				}
+			});
+		});
+
+		const phone = await connectPhone(uiUrl, "s-direction-phone");
+		await waitFor(phone, "attached");
+
+		const frames = record(phone);
+		const closed = new Promise((resolve) => phone.on("close", (code) => resolve(code)));
+		send(phone, { type: "hello", sessionId: "x" });
+
+		assert.equal(await closed, 1008);
+		assert.match(frames.at(-1).message, /may not send "hello"/);
+		// The computer learns the phone is gone, rather than believing it still
+		// has a client.
+		assert.equal((await gone).phones, 0);
+	} finally {
+		await server.close();
+	}
+});
+
 test("allowGeneratedKey:false is honoured, not silently ignored", async () => {
   // The constructor used to destructure the option and never read it, so an
   // embedder asking for no dev key still got one minted.

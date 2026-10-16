@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { destructiveMatch, destructiveReason, formatApprovalPrompt, truncateApprovalCommand } from "../lib/approval.mjs";
+import { destructiveMatch, destructiveMatches, destructiveReason, formatApprovalPrompt, truncateApprovalCommand } from "../lib/approval.mjs";
 
 test("destructive commands are caught with a plain reason", () => {
 	assert.equal(destructiveReason("rm -rf build"), "deletes files");
@@ -22,6 +22,13 @@ test("the same kind of danger has one stable id, whatever the command text", () 
 	assert.notEqual(destructiveMatch("rm -rf x").kind, destructiveMatch("sudo rm x").kind);
 	assert.equal(destructiveMatch("git status"), null);
 	assert.equal(destructiveMatch(""), null);
+});
+
+test("a compound command reports every danger it carries", () => {
+	// Reporting only the first would understate `sudo rm -rf /`.
+	assert.deepEqual(destructiveMatches("sudo rm -rf /").map((m) => m.kind), ["delete-files", "sudo"]);
+	assert.deepEqual(destructiveMatches("git status"), []);
+	assert.equal(destructiveMatch("sudo rm -rf /").kind, "delete-files", "the first is still the headline");
 });
 
 test("ordinary commands pass without a prompt", () => {

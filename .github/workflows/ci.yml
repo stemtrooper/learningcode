@@ -150,3 +150,23 @@ jobs:
               # for a student who opens a new tab.
               bash -ic "learningcode --version"
             '
+
+  # A dependency advisory is not something a student can debug, so production
+  # dependencies are audited on every run. Dev-only advisories are left to
+  # Dependabot (see .github/dependabot.yml) rather than turning the suite red
+  # over a tool the shipped CLI never loads.
+  audit:
+    name: dependency audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # Reads package-lock.json; no install needed. High and critical only:
+      # a moderate advisory in a deep transitive dep is not worth a red build.
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high

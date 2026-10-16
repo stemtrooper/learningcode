@@ -226,7 +226,7 @@ export default function sparkQuota(pi: ExtensionAPI) {
 		const limit = num(body.dailyTokenLimit);
 		if (limit > 0 && used / limit >= 0.8) {
 			ctx.ui.notify(
-				`Heads up: ${Math.round((used / limit) * 100)}% of today's Spark quota is gone. Run /quota for detail.`,
+				`Heads up: ${Math.round((used / limit) * 100)}% of your Spark quota is spent. It ${quotaResetLine()}. Run /quota for detail.`,
 				"warning",
 			);
 		}

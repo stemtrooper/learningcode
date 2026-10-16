@@ -64,6 +64,38 @@ test("Allow Always remembers the kind, so a rewritten command stops asking", asy
 	}
 });
 
+test("a compound command shows and remembers every kind it carries", async () => {
+	const dir = await mkdtemp(join(tmpdir(), "lc-always-multi-"));
+	const saved = process.env.LEARNINGCODE_DIR;
+	try {
+		const { run, prompts, state } = await loadExtension(dir);
+
+		// `sudo rm -rf /` is two dangers. Reporting only the first would both
+		// understate it and remember less than the student just approved.
+		state.answer = "Always allow: deletes files, runs as administrator";
+		await run("sudo rm -rf /tmp/x");
+		assert.equal(prompts.length, 1);
+		assert.deepEqual(prompts[0].options, [
+			"Yes",
+			"No",
+			"Always allow: deletes files, runs as administrator",
+		]);
+
+		const settings = JSON.parse(await readFile(join(dir, "settings.json"), "utf-8"));
+		assert.deepEqual([...settings.alwaysAllowKinds].sort(), ["delete-files", "sudo"]);
+
+		// Each remembered kind stands on its own, so neither half re-prompts.
+		state.answer = "Yes";
+		await run("rm -rf /tmp/y");
+		await run("sudo apt-get update");
+		assert.equal(prompts.length, 1, "both kinds are pre-approved");
+	} finally {
+		if (saved === undefined) delete process.env.LEARNINGCODE_DIR;
+		else process.env.LEARNINGCODE_DIR = saved;
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
 test("a settings file from before kinds still honours the exact command", async () => {
 	const dir = await mkdtemp(join(tmpdir(), "lc-always-legacy-"));
 	const saved = process.env.LEARNINGCODE_DIR;

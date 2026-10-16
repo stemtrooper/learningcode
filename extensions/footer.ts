@@ -200,6 +200,7 @@ export default function sparkFooter(pi: ExtensionAPI) {
   let colorIndex = 0;
   let tui: TuiLike | undefined;
   let spend = { tokens: 0, dollars: null as number | null };
+  let refreshing = false;
   let sessionRefs = {} as {
     model?: { provider?: string; id?: string } | null;
     sessionManager?: SessionManagerLike;
@@ -229,12 +230,19 @@ export default function sparkFooter(pi: ExtensionAPI) {
     if (!ctx.hasUI || ctx.mode !== "tui") return;
 
     const refresh = async () => {
-      quota = await fetchQuota();
-      recomputeSpend();
-      // Repaint in place. Notifying would be the wrong tool: an empty
-      // notification still appends a row to the transcript, and the transcript is
-      // what the student is reading.
-      tui?.requestRender?.();
+      // Skip rather than stack: the interval fires regardless of a slow poll.
+      if (refreshing) return;
+      refreshing = true;
+      try {
+        quota = await fetchQuota();
+        recomputeSpend();
+        // Repaint in place. Notifying would be the wrong tool: an empty
+        // notification still appends a row to the transcript, and the transcript is
+        // what the student is reading.
+        tui?.requestRender?.();
+      } finally {
+        refreshing = false;
+      }
     };
 
     const sessionCtx = ctx as {
