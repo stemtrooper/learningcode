@@ -64,13 +64,16 @@ provider key and the constraint does not apply — so full parity is safe there.
 
 Gate on the **active provider**, not a string guess.
 
-- Source of truth: the **provider field of the last assistant entry** (the same
-  source `extensions/footer.ts:186 activeModelId(ctx)` reads). Provider ids are
-  not reliably parseable from the model id (`river/deepseek-ai/…` has two
-  slashes), so do **not** split the id — read the `provider` field.
-- Extract `activeModelId`/provider lookup out of `footer.ts` into a shared
-  module (e.g. `lib/active-model.mjs`) so the footer and the gate share one
-  implementation. `footer.ts` re-exports for compatibility.
+- Source of truth: **`ctx.model.provider`**, read live at call time. That is the
+  same live session model the footer renders (`extensions/footer.ts:186`
+  `activeModelId(ctx)` reads `ctx.model`) and the same handle Pi's own subagent
+  example uses for its dispatch defaults (`ctx.model` → `provider/id`). Do
+  **not** parse the provider out of the model id — `river/deepseek-ai/…` has two
+  slashes, and ids are not stable.
+- Extract the lookup out of `footer.ts` into a shared module
+  (`lib/active-model.mjs`): `activeModelId(ctx)` and `activeProviderId(ctx)`.
+  `footer.ts` re-exports `activeModelId` for compatibility; the gate uses
+  `activeProviderId`.
 
 **Behaviour**
 
@@ -139,6 +142,23 @@ docs/subagents.md             # design + safety (this plan, build-facing)
   transcript is never polluted.
 - Env: `{ ...process.env, ...agentEnvironment({ dir, token }) }`, plus the undo
   bridge variable in §7. No Spark token is needed (Spark is gated out).
+
+### Child output (JSON lines) — verified against Pi 1.3.0
+
+`-p --mode json` writes one JSON object per line. The parser is pinned to what
+1.3.0 actually sends (`docs/json.md`), **not** to Pi's example, which tracks an
+older wire shape:
+
+- first line `{"type":"session",…}` — header; ignore it.
+- `{"type":"message_end","message":{…}}` — the **authoritative** message. Take
+  assistant text, `usage`, `model`, `stopReason`, and `errorMessage` from here,
+  and count one turn per assistant `message_end`.
+- `{"type":"tool_execution_end",…}` — a tool finished. (Pi's example listens for
+  `tool_result_end`; 1.3.0 no longer emits it. Do not copy that line.)
+- `{"type":"agent_settled",…}` — Pi has no remaining automatic work; treat it as
+  the completion signal.
+- Only `message_end` feeds the student-facing output; every other event type is
+  ignored without erroring.
 
 ### Child extension policy
 
@@ -281,6 +301,9 @@ Integration (opt-in, like `remote-e2e`):
 
 - Ship as the **first 0.9.0 feature**, after WS5/WS6.
 - Add the dated revision note to `docs/plan-0.8.md` (§1).
+- Add `"agents"` to `package.json` `files`. It is not there today, so without
+  this the shipped agent definitions never reach the published tarball and §6
+  discovery silently finds nothing on a fresh global install.
 - New `docs/subagents.md` (design + safety), a README section, a CHANGELOG
   entry, and the version bump — same release ritual as every prior version.
 - `npm audit` clean and the full suite green before publish, as always.
@@ -294,7 +317,11 @@ Integration (opt-in, like `remote-e2e`):
 2. **Refactor blast radius** — moving `activeModelId` out of `footer.ts` and
    splitting the recorder out of `checkpoint.ts` touch shipped, tested code;
    both need their existing tests to stay green.
-3. **`--no-session` + JSON mode** — confirm Pi 1.3.0 emits a stable JSON-lines
-   shape for `-p --mode json` (the example depends on it); pin the parser to
-   what this version emits.
+3. **RESOLVED — `--no-session` + JSON mode.** Pi 1.3.0 documents the shape in
+   `docs/json.md`, and every flag the child needs exists in `--help`
+   (`--mode json`, `-p`, `--no-session`, `--tools`, `--thinking`,
+   `--append-system-prompt`, `--no-skills`). The parser is pinned in §5 to
+   `message_end` (authoritative) + `tool_execution_end` + `agent_settled`. The
+   one trap: Pi's example still listens for `tool_result_end`, which this
+   version does not emit — do not copy that line.
 4. **Provider rate limits off Spark** — 6/3 is a guess; revisit after real use.
