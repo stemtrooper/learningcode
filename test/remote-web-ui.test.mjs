@@ -148,3 +148,13 @@ test("a handled command settles the turn, quietly", () => {
 	assert.match(body, /working = false/, "but the turn does end");
 });
 
+test("the activity line names a helper, and shows its result, when the computer sends one", () => {
+	// The phone's one status line used to read "Running subagent…" for every
+	// helper. The sanitized event now carries a label (the helper's name, or a
+	// count) and, on finish, a one-line digest of what it found.
+	const html = remoteWebUi();
+	assert.match(html, /setStatus\("Running " \+ \(event\.label \|\| event\.toolName/, "the start line prefers the label");
+	assert.match(html, /if \(event\.summary\)/, "a helper result line is shown");
+	assert.match(html, /activity\(event\.summary/, "as an activity line");
+});
+

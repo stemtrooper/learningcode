@@ -125,3 +125,39 @@ test("a notice is redacted like everything else", () => {
 	assert.ok(!note.text.includes("abcd1234"), "a secret in a notify never reaches a phone");
 });
 
+test("a helper call carries a friendlier label and a one-line result", () => {
+	const started = sanitizeAgentEvent({
+		type: "tool_execution_start",
+		toolName: "subagent",
+		args: { agent: "scout" },
+	});
+	assert.equal(started.toolName, "subagent");
+	assert.equal(started.label, "scout");
+
+	const ended = sanitizeAgentEvent({
+		type: "tool_execution_end",
+		toolName: "subagent",
+		result: { details: { mode: "single", runs: [{ agent: "scout", ok: true, text: "found 4 files" }] } },
+	});
+	assert.equal(ended.label, "scout");
+	assert.equal(ended.summary, "✓ scout: found 4 files");
+});
+
+test("an ordinary tool event gains no label or summary", () => {
+	const started = sanitizeAgentEvent({ type: "tool_execution_start", toolName: "bash" });
+	assert.deepEqual(started, { type: "tool_execution_start", toolName: "bash" });
+
+	const ended = sanitizeAgentEvent({ type: "tool_execution_end", toolName: "bash" });
+	assert.equal(ended.label, undefined);
+	assert.equal(ended.summary, undefined);
+});
+
+test("a helper summary is redacted before it can reach a phone", () => {
+	const ended = sanitizeAgentEvent({
+		type: "tool_execution_end",
+		toolName: "subagent",
+		result: { details: { mode: "single", runs: [{ agent: "scout", ok: true, text: `token ${SPARK_TOKEN}` }] } },
+	});
+	assert.ok(!JSON.stringify(ended).includes("abcd1234"), "a secret in a helper's output never reaches a phone");
+});
+

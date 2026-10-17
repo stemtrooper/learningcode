@@ -98,3 +98,24 @@ test("RemoteConsole remembers a tool's target from start to finish", () => {
 	assert.match(text, /✓ read …\/src\/app\.js/);
 	assert.match(text, /✗ bash npm test/);
 });
+
+test("the console names a helper on the finish line and shows its one-line result", () => {
+	const out = capture();
+	const screen = new RemoteConsole({ write: out.write, tty: false });
+	screen.onEvent({
+		type: "tool_execution_start",
+		toolCallId: "h1",
+		toolName: "subagent",
+		args: { agent: "scout", task: "look around" },
+	});
+	screen.onEvent({
+		type: "tool_execution_end",
+		toolCallId: "h1",
+		toolName: "subagent",
+		result: { details: { mode: "single", runs: [{ agent: "scout", ok: true, text: "found the tests" }] } },
+	});
+	const text = out.text();
+	assert.match(text, /✓ scout/, "the helper is named");
+	assert.doesNotMatch(text, /subagent/, "not the bare tool name");
+	assert.match(text, /✓ scout: found the tests/, "the helper's own first line is shown");
+});

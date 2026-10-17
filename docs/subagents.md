@@ -146,6 +146,14 @@ Student language throughout; no usage, cost, exit codes, stderr, or JSON.
 - **On Spark:** the tool is hidden; if it is somehow called, the student gets
   "Helpers need a model that can run more than one answer at a time. TLC-Spark
   runs one at a time. Switch with `/model` to use them."
+- **On a phone (`learningcode remote`):** the same name and one-line result
+  reach the phone. Custom tool `renderCall`/`renderResult` are TUI/HTML-export
+  only and never cross the RPC bridge, so the outbound sanitizer derives the
+  label itself: `lib/remote/labels.mjs` turns the call arguments (on start) or
+  the resolved runs (on finish) into `scout`, `3 helpers`, or `chain of 2`, and a
+  one-line `✓ scout: found the tests`. `sanitize.mjs` attaches those only when
+  they differ from the bare tool name, and redacts the summary like every other
+  field; the phone's activity line and the computer console both read them.
 
 ---
 
@@ -160,6 +168,7 @@ lib/subagent/child.mjs        # argv/env builder, spawn, JSON-lines parse, concu
 lib/subagent/run.mjs          # orchestration (modes, gate, undo session) — testable
 lib/subagent/render.mjs       # runs -> student-language strings
 lib/active-model.mjs          # activeModelId / activeProviderId (shared with footer)
+lib/remote/labels.mjs         # tool call -> student name (scout, 3 helpers) for phone+console
 agents/*.md                   # the four shipped helpers
 ```
 

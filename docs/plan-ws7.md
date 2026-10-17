@@ -8,6 +8,11 @@ direction keeps the active set in step. Live verification: a `scout` child, a
 `worker` child whose edit landed in the parent journal, and a two-helper
 parallel run all succeeded against a real provider off Spark; the Spark gate is
 unit-tested (the dev token was expired for a live Spark call).
+
+**Follow-up shipped in 0.14.1:** helper names and one-line results now reach the
+phone and the computer console (`lib/remote/labels.mjs`, wired through
+`sanitize.mjs`). Custom tool renderers are TUI/HTML-export only, so the remote
+path had to derive its own label; see the "What a student sees" section below.
 **Placement:** post-0.8. First feature of the 0.9 line, **after** WS5 (phone parity)
 and WS6 (speed budgets) land.
 **Audience:** students. Same rule as ever — student language, no stack traces.
