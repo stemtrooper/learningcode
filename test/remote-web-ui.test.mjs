@@ -127,3 +127,24 @@ test("a queued message says so where there is room for a sentence", () => {
 	const html = remoteWebUi();
 	assert.match(html, /queued — runs after this answer/);
 });
+
+test("command output reads as a block, not a status blip", () => {
+	// /quota, /seats and /todos arrive as notes. Rendered through the one-line,
+	// centred activity style, a multi-line /todos collapsed into a run-on line.
+	const html = remoteWebUi();
+	assert.match(html, /case "note":\s*\n\s*note\(event\.text \|\| ""\);/);
+	assert.match(html, /\.note\s*\{[^}]*white-space:\s*pre-wrap/, "a checklist keeps its line breaks");
+	assert.match(html, /\.note\s*\{[^}]*align-self:\s*flex-start/, "and does not sit centred like a status");
+});
+
+test("a handled command settles the turn, quietly", () => {
+	// Pi answers a /command without starting a run, so no agent_settled follows;
+	// without this the spinner and Stop would hang forever after every command.
+	const html = remoteWebUi();
+	assert.match(html, /case "command_done":/);
+	const settle = html.slice(html.indexOf('case "command_done":'));
+	const body = settle.slice(0, settle.indexOf("break;"));
+	assert.doesNotMatch(body, /playDoneChime/, "a command is not an answer; no done chime");
+	assert.match(body, /working = false/, "but the turn does end");
+});
+

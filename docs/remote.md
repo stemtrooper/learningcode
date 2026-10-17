@@ -127,6 +127,29 @@ server → phone : attached { session }
   and resumes the same Pi session, so the next phone message continues where the
   conversation left off rather than starting a new one.
 
+## Commands from the phone
+
+A line typed on the phone that starts with `/` is not special-cased: it goes
+through the same `prompt` path as any other message, and Pi executes the
+extension command it names. In RPC mode an extension command
+(`/quota`, `/seats`, `/todo`, `/todos`, `/approve`, `/plan`, `/undo`) is
+answered by Pi itself — the handler runs, its `ctx.ui.notify` reaches the phone
+as a note, and the prompt comes back `disposition: "handled"`.
+
+The catch is that a handled command starts **no run**: no `agent_start`,
+`agent_end` or `agent_settled` is emitted. The phone marks itself "working" the
+moment it sends a line, so without a settle signal it would spin forever, with
+Stop lit, after every command. The bridge therefore watches the prompt response
+and, on `"handled"`, sends a `command_done` event; the phone clears the turn
+quietly (a command is not an answer, so there is no done chime). A command that
+*does* start a run — `/plan <template>` calls `sendUserMessage` — is unaffected:
+the response arrives before the run events, which then re-engage the spinner.
+
+Notes are rendered as a readable block, not the one-line status blip used for
+tool progress: a `/todos` checklist keeps its line breaks and is not clipped at
+300 characters. Everything a note carries is still redacted and bounded (the
+ceiling is 2000 characters) before it leaves the machine.
+
 ## The computer screen
 
 In remote mode Pi runs headless, so the machine driving the agent would otherwise

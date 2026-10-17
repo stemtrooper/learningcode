@@ -56,6 +56,27 @@ function fakeAgent() {
 	};
 }
 
+/**
+ * A stand-in for Pi answering extension commands the way RPC mode does: the
+ * command's own handler reports through ctx.ui.notify, and the prompt comes back
+ * "handled" with no agent_start / agent_settled run behind it. Anything not in
+ * `commands` falls through to the normal prompt path.
+ */
+function commandAgent(commands) {
+	const agent = fakeAgent();
+	const normalPrompt = agent.prompt;
+	agent.prompt = async (text, streamingBehavior) => {
+		const name = String(text).trim().split(/\s+/)[0];
+		const handler = commands[name];
+		if (handler) {
+			handler(agent, text);
+			return "handled";
+		}
+		return normalPrompt(text, streamingBehavior);
+	};
+	return agent;
+}
+
 /** A fake WebSocket that records frames and can be driven from the test. */
 function fakeSocket() {
 	const frames = [];
@@ -364,3 +385,57 @@ test("stop() detaches from the agent so events stop flowing", async () => {
 	agent.emitEvent({ type: "tool_execution_start", toolName: "bash" });
 	assert.equal(socket.json("event").length, 0, "no events after stop");
 });
+
+// WS5: the phone walkthrough. A command is not a turn — Pi answers it, reports
+// "handled", and starts no run — but the phone sets itself working when it sends
+// the line, so the bridge has to settle it. Each step also has to read back.
+test("a phone walkthrough: every command answers in text and settles the turn", async () => {
+	const outputs = {
+		"/quota": "Spark quota - 1,200 / 5,000 tokens used today, resets Friday",
+		"/seats": "Spark seats: 3 of 6 free",
+		"/plan": "Plan mode on. The agent will propose a plan and wait for /approve.",
+		"/todo": "Added step 1: wire the LED",
+		"/approve": "Plan approved - switching to build mode.",
+		"/todos": "1. [ ] wire the LED\n2. [ ] blink it\n3. [ ] add a switch",
+	};
+	const commands = Object.fromEntries(
+		Object.entries(outputs).map(([name, text]) => [
+			name,
+			(agent) => agent.emitUi({ method: "notify", message: text, notifyType: "info" }),
+		]),
+	);
+	const agent = commandAgent(commands);
+	const socket = fakeSocket();
+	const bridge = new RemoteBridge(bridgeOptions({ agent, socket }));
+	await bridge.start();
+	socket.handlers.open();
+
+	for (const [name, text] of Object.entries(outputs)) {
+		socket.deliver({ protocol: 1, type: "phone_message", text: name });
+		await new Promise((resolve) => setImmediate(resolve));
+
+		const echo = socket.json("agent_message").at(-1);
+		assert.equal(echo.text, name, `${name} is echoed as what the student typed`);
+
+		const events = socket.json("event").map((frame) => frame.event);
+		assert.deepEqual(events.at(-2), { type: "note", text }, `${name} reads back as text`);
+		assert.deepEqual(events.at(-1), { type: "command_done" }, `${name} settles the turn`);
+	}
+	await bridge.stop();
+});
+
+test("an ordinary message starts a turn and does not settle it early", async () => {
+	const agent = fakeAgent();
+	const socket = fakeSocket();
+	const bridge = new RemoteBridge(bridgeOptions({ agent, socket }));
+	await bridge.start();
+	socket.handlers.open();
+
+	socket.deliver({ protocol: 1, type: "phone_message", text: "make it blink" });
+	await new Promise((resolve) => setImmediate(resolve));
+
+	const events = socket.json("event").map((frame) => frame.event);
+	assert.deepEqual(events, [], "the agent's own run will settle it; the bridge stays quiet");
+	await bridge.stop();
+});
+

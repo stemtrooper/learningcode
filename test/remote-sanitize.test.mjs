@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { redact, sanitizeAgentEvent, sanitizeMessages } from "../lib/remote/sanitize.mjs";
+import { redact, sanitizeAgentEvent, sanitizeExtensionUi, sanitizeMessages } from "../lib/remote/sanitize.mjs";
 
 /** The two secrets that must never reach a phone. */
 const SPARK_TOKEN = "spark_live_abcd1234efgh5678";
@@ -105,3 +105,23 @@ test("history is bounded to the recent tail", () => {
 	assert.ok(trimmed.length <= 100, `was ${trimmed.length}`);
 	assert.equal(trimmed.at(-1).text, "m299", "the newest messages are kept");
 });
+
+test("a command's output survives whole, up to the note ceiling", () => {
+	// A /todos checklist used to be clipped at 300 characters, which cut a
+	// five-step plan off mid-sentence on the phone.
+	const checklist = Array.from({ length: 20 }, (_, i) => `${i + 1}. [ ] step ${i + 1}`).join("\n");
+	assert.ok(checklist.length > 300, "the fixture is longer than the old ceiling");
+	const note = sanitizeExtensionUi({ method: "notify", message: checklist });
+	assert.equal(note.type, "note");
+	assert.equal(note.text, checklist, "nothing is dropped below the ceiling");
+
+	// Still bounded: a runaway notice cannot push an unbounded string at a phone.
+	const huge = sanitizeExtensionUi({ method: "notify", message: "x".repeat(10_000) });
+	assert.ok(huge.text.length <= 2000, `was ${huge.text.length}`);
+});
+
+test("a notice is redacted like everything else", () => {
+	const note = sanitizeExtensionUi({ method: "notify", message: `token ${SPARK_TOKEN} leaked` });
+	assert.ok(!note.text.includes("abcd1234"), "a secret in a notify never reaches a phone");
+});
+

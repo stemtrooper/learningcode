@@ -73,16 +73,33 @@ undo matrix over the mutating tools.
 Tests: template expansion (done); strict-mode block/unblock transitions,
 env-pinned labs, and approval-across-resume (done).
 
-### 5. Phone as a real client (remote parity)
+### 5. Phone as a real client (remote parity) — DONE
 
-- End-to-end verification from a phone: login → quota → plan →
+- [x] End-to-end verification from a phone: login → quota → plan →
   approve → read output, start to finish, on a small screen.
-- Every 0.7/0.8 command (`/todo`, `/approve`, `/quota`, `/seats`)
+- [x] Every 0.7/0.8 command (`/todo`, `/approve`, `/quota`, `/seats`)
   confirmed reachable and readable through the RPC bridge text path.
-- Fix what the walkthrough finds; the phone is some students' only
-  computer, so parity gaps are launch blockers, not polish.
+  (0.12.0)
+- [x] Fix what the walkthrough found. Two real gaps, both fixed:
+  - **A handled command never settled the turn.** Pi answers an
+    extension command over RPC with `disposition: "handled"` and
+    starts no run, so no `agent_start`/`agent_settled` ever followed.
+    The phone set itself "working" when it echoed the line and then
+    span forever, with Stop lit, after every `/quota` or `/todo`. The
+    bridge now emits `command_done` on a handled prompt; the phone
+    settles quietly (no done chime — a command is not an answer).
+  - **Command output was a status blip, not readable text.** Notes
+    rendered through the centred, one-line `activity` style with no
+    `pre-wrap`, so a multi-line `/todos` collapsed into a run-on
+    sentence, and every note was clipped to 300 characters. Notes now
+    render as a left-aligned block that keeps its line breaks, and the
+    notify ceiling is raised to 2000 (still bounded and redacted).
 
-Tests: bridge-level walkthrough asserting text output per step.
+Tests: bridge-level walkthrough asserting text output per step (done) —
+`test/remote-bridge.test.mjs` drives the phone through every command and
+asserts the echoed line, the readable note, and the settle; the sanitizer
+and web-ui suites cover the raised bound and the new rendering.
+
 
 ### 6. Speed (latency is the experience)
 

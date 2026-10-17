@@ -18,10 +18,10 @@ inference through **TLC-Spark**.
 general-purpose AI coding tool: the model, the quota and the seat limits all belong
 to TLC, and every token you spend comes out of your course allocation.
 
-> **New in 0.11.0** — optional strict plan mode: `/plan strict on` locks editing
-> until you have a plan and approve it with `/approve`, building the planning
-> habit. Off by default; the footer shows `PLAN first` while it is holding you
-> back. See [Changelog](#changelog).
+> **New in 0.12.0** — every command works from the phone now. If you drive your
+> session with `learningcode remote`, `/quota`, `/seats`, `/todo`, `/todos`,
+> `/approve` and `/plan` answer as readable text and settle the screen when they
+> finish. See [Changelog](#changelog).
 
 ---
 
@@ -489,6 +489,11 @@ often, and a student's install must not change underneath them mid-term.
 
 ## Changelog
 
+* **0.12.0** — remote parity: every command (`/quota`, `/seats`, `/todo`,
+  `/todos`, `/approve`, `/plan`, `/undo`) works from the phone. Command answers
+  now render as readable text that keeps its line breaks instead of a one-line
+  status blip, and a handled command settles the screen instead of leaving it
+  spinning with Stop lit.
 * **0.11.0** — optional strict plan mode: `/plan strict on` locks Build until a
   plan exists and is approved with `/approve`, so editing cannot start before
   planning. The footer reads `PLAN first` while locked. Off by default; a lab can
