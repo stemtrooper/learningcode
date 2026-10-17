@@ -271,6 +271,7 @@ Useful commands, typed inside the session:
 | `/hotkeys` | keyboard shortcuts |
 | `/plan` | toggle Plan / Build mode (`shift+tab`) — plan without touching anything; `/plan <template>` starts a guided plan; `/plan strict on\|off` sets the strict preset |
 | `/approve` | approve the plan and start building, checklist carried along |
+| `/pace` | save a few steps of today's quota for later (`/pace reserve 3`, `/pace reserve off`) |
 | `/todo` | manage the checklist: `add <text> \| done <n> \| clear` |
 | `/todos` | show the full plan checklist |
 | `/intro` | replay the 5-minute guided tour (`--no-intro` skips it) |
@@ -279,6 +280,16 @@ Useful commands, typed inside the session:
 Build until you make a plan and approve it with `/approve`. It is off by default
 and `/plan strict off` turns it off; a lab can pin it on for a shared machine
 with `LEARNINGCODE_PLAN_STRICT=1` (the student cannot toggle that off in-session).
+
+`/pace` shows about how many more steps today and can keep a few back: with
+`/pace reserve 3` the assistant stops before changing files once only three
+steps remain, so you keep something for later instead of running the day's Spark
+quota to zero mid-assignment. `/pace reserve off` lifts it instantly, and
+`/quota` shows the same estimate. The count always rounds down and is
+approximate. This is Spark-only, where the daily quota lives; a lab may pin a
+minimum with `LEARNINGCODE_PACE_RESERVE`, and even then you can raise the
+reserve — never lower it past the pin. The reserve is yours: it is off by
+default and no teacher can set a hard cap with it.
 
 `/quota`, `/seats` and `/spark-login` talk to Spark directly. They are the commands a
 stock AI coding tool does not have, because those endpoints are not part of any
@@ -402,6 +413,12 @@ Spark allows one active generation per student. Stop the running one first.
 **`Every seat is taken` / queue position**
 All seats are busy. `learningcode` prints your position; try again shortly.
 
+**`You asked to keep ~3 steps for later, so I stopped before changing files`**
+You set a quota reserve with `/pace reserve 3`, and only that many steps were
+left. Nothing is lost — the assistant stopped at a safe point, and `/undo`
+still lists and recovers its file changes. Run `/pace reserve off` to use the
+rest of the day, or `/pace` to see where you are.
+
 **The banner looks like plain text**
 Your terminal is narrower than 51 columns. Widen it.
 
@@ -519,6 +536,11 @@ often, and a student's install must not change underneath them mid-term.
 
 ## Changelog
 
+* **0.15.0** — quota pacing: the footer and `/quota` say *about how many more
+  steps today*, and `/pace reserve N` keeps a few steps back so the assistant
+  stops before changing files instead of running the day's Spark quota to zero.
+  `/pace reserve off` lifts it, and the estimate always rounds down. It is
+  student-owned, off by default, and Spark-only.
 * **0.13.0** — speed: the launcher no longer blocks on the Spark
   reachability preflight before showing a prompt. It runs under a 350ms
   budget, so a slow network can't hold up startup; a real outage still shows

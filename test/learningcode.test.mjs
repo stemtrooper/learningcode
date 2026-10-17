@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -609,6 +609,99 @@ test("unlimited and no-daily-cap accounts are not rendered as zero allowance", a
   assert.match(quota._internals.quotaLine(capped), /resets Fri 00:00 \(in /);
 });
 
+test("quota pacing turns tokens into about-how-many-steps, with no dollars", async () => {
+  const jiti = createJiti(import.meta.url);
+  const quota = await jiti.import("../extensions/spark-quota.ts");
+
+  const capped = { tokensUsed: 12345, dailyTokenLimit: 250000, quotaExempt: false, aiEnabled: true };
+  const line = quota._internals.quotaLine(capped, "about 9 more steps today");
+  assert.match(line, /12,345\/250,000 tokens/);
+  assert.match(line, /about 9 more steps today/);
+  assert.ok(line.includes("  |  about 9 more steps today"), "pace rides after the quota detail");
+  assert.equal(quota._internals.quotaLine(capped), quota._internals.quotaLine(capped, ""), "no pace, no change");
+
+  const dir = await mkdtemp(join(tmpdir(), "lc-pace-quota-"));
+  const previous = process.env.LEARNINGCODE_DIR;
+  process.env.LEARNINGCODE_DIR = dir;
+  try {
+    const text = await quota._internals.paceText(
+      { tokensUsed: 40000, dailyTokenLimit: 250000 },
+      { sessionManager: { getEntries: () => [] } },
+    );
+    assert.match(text, /about 17 more steps today/, "(250k - 40k) / 12k default = 17");
+    assert.doesNotMatch(text, /resets/, "quotaLine already carries the reset time");
+    assert.doesNotMatch(text, /\$|dollars|cost/i);
+
+    // A lab pin is the same floor the stop uses, so the two cannot drift.
+    process.env.LEARNINGCODE_PACE_RESERVE = "5";
+    const pinned = await quota._internals.paceText(
+      { tokensUsed: 40000, dailyTokenLimit: 250000 },
+      { sessionManager: { getEntries: () => [] } },
+    );
+    delete process.env.LEARNINGCODE_PACE_RESERVE;
+    assert.match(pinned, /about 12 more steps today/);
+    assert.match(pinned, /keeping the last 5 steps for later/);
+  } finally {
+    delete process.env.LEARNINGCODE_PACE_RESERVE;
+    if (previous === undefined) delete process.env.LEARNINGCODE_DIR;
+    else process.env.LEARNINGCODE_DIR = previous;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("the footer shows the pace estimate wide and drops it narrow", async () => {
+  const jiti = createJiti(import.meta.url);
+  const mod = await jiti.import("../extensions/footer.ts");
+  const dir = await mkdtemp(join(tmpdir(), "lc-footer-pace-"));
+  const saved = { dir: process.env.LEARNINGCODE_DIR, key: process.env.SPARK_API_KEY, base: process.env.SPARK_BASE_URL, reserve: process.env.LEARNINGCODE_PACE_RESERVE, fetch: globalThis.fetch };
+  const calls = { count: 0 };
+  process.env.LEARNINGCODE_DIR = dir;
+  process.env.SPARK_API_KEY = "spark_live_test";
+  process.env.SPARK_BASE_URL = "https://spark.test/v1";
+  process.env.LEARNINGCODE_PACE_RESERVE = "5";
+  globalThis.fetch = async () => {
+    calls.count += 1;
+    return { ok: true, json: async () => ({ tokensUsed: 40000, dailyTokenLimit: 250000, quotaExempt: false, aiEnabled: true }) };
+  };
+  try {
+    await writeFile(join(dir, "settings.json"), JSON.stringify({ paceReserve: 3 }), "utf-8");
+    const handlers = new Map();
+    let footerFactory;
+    const ctx = {
+      hasUI: true,
+      mode: "tui",
+      model: { provider: "tlc-spark", id: "TLC-Spark" },
+      sessionManager: { getEntries: () => [] },
+      modelRegistry: { find: () => undefined },
+      ui: { setFooter: (f) => (footerFactory = f) },
+    };
+    mod.default({ on: (event, fn) => handlers.set(event, fn) });
+    await handlers.get("session_start")({}, ctx);
+    const theme = { fg: (_t, text) => text };
+    const noStatus = { getExtensionStatuses: () => new Map() };
+
+    const wide = footerFactory({}, theme, noStatus).render(100).join("");
+    assert.match(wide, /about 12 more steps today/, "17 minus the lab pin of 5");
+    assert.match(wide, /keep 5/, "the footer honours the lab floor");
+    assert.doesNotMatch(wide, /\$/, "never a price on Spark");
+    assert.equal(calls.count, 1, "the ceiling is fetched once, not per render");
+
+    footerFactory({}, theme, noStatus).render(40);
+    assert.equal(calls.count, 1, "narrowing does not refetch");
+    const narrow = footerFactory({}, theme, noStatus).render(40).join("");
+    assert.doesNotMatch(narrow, /more steps/, "pace is dropped on a phone width");
+
+    await handlers.get("session_shutdown")();
+  } finally {
+    for (const [key, value] of Object.entries({ LEARNINGCODE_DIR: saved.dir, SPARK_API_KEY: saved.key, SPARK_BASE_URL: saved.base, LEARNINGCODE_PACE_RESERVE: saved.reserve })) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    globalThis.fetch = saved.fetch;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("a stalled Spark call times out instead of hanging /quota", async () => {
   const jiti = createJiti(import.meta.url);
   const quota = await jiti.import("../extensions/spark-quota.ts");
@@ -807,6 +900,8 @@ test("the footer totals session spend and prices it from the catalog", async () 
   assert.ok(Math.abs(spend.dollars - 0.00882) < 1e-9);
   assert.equal(sessionSpend(entries).dollars, null, "tokens alone are never a price");
   assert.equal(sessionSpend(entries).tokens, 4600);
+  assert.equal(spend.steps, 1, "steps count assistant turns only, not standalone usage entries");
+  assert.equal(sessionSpend(entries).steps, 1);
 
   assert.equal(spendText({ tokens: 0, dollars: null }), "", "nothing spent, nothing shown");
   assert.equal(spendText({ tokens: 1600, dollars: null }), "sess 2k");

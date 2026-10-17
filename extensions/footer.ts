@@ -1,11 +1,18 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { activeModelId } from "../lib/active-model.mjs";
+import { agentDir } from "../lib/config.mjs";
 import { folderLabel } from "../lib/folder.mjs";
+import { paceSegment, remainingTokens, resolveReserve, stepsLeft, tokensPerStep } from "../lib/pace.mjs";
+import { readPaceReserve } from "../lib/settings.mjs";
+import { sessionSpend } from "../lib/spend.mjs";
 import { inverseBox, safeFg } from "../lib/theme.mjs";
 
 // The footer and the sub-agent gate must agree on the active model, so it lives
 // in lib/active-model.mjs. Keep the historical named export here for importers.
 export { activeModelId };
+// The usage harvest now lives in lib/spend.mjs so the footer and quota pacing
+// cannot disagree about what a session spent. Re-exported for compatibility.
+export { sessionSpend };
 
 /**
  * A persistent footer showing what a Spark student actually needs to know:
@@ -108,49 +115,6 @@ function format(quota: Quota): string[] {
   ];
 }
 
-/**
- * Session spend over entries. Usage arrives two ways: standalone `usage`
- * entries (model-attributed, non-LLM) and, for every turn, on the assistant
- * message itself (`message` entries, the actual per-turn source). Both are
- * harvested; the two never describe the same call.
- * Dollars use each call's own model catalog price ($/M tokens); cache-read
- * tokens are billed at the cache rate, the rest of input at the input rate
- * (cacheWrite is a subset of input, already counted). dollars is null when
- * no call has numeric rates — tokens alone must never be mistaken for a price.
- */
-export function sessionSpend(
-	entries: EntryLike[],
-	findModel?: (provider?: string, model?: string) => { cost?: CostLike } | undefined,
-): { tokens: number; dollars: number | null } {
-	let tokens = 0;
-	let dollars = 0;
-	let priced = false;
-	const attribute = (provider: string | undefined, model: string | undefined, usage: UsageLike) => {
-		const input = num(usage.input);
-		const output = num(usage.output);
-		const read = Math.min(num(usage.cacheRead), input);
-		tokens += input + output;
-		const cost = findModel?.(provider ?? "", model ?? "")?.cost;
-		const rates = [cost?.input, cost?.output, cost?.cacheRead];
-		if (cost && rates.some((r) => typeof r === "number")) {
-			priced = true;
-			dollars +=
-				((input - read) * num(cost.input) + read * num(cost.cacheRead) + output * num(cost.output)) / 1_000_000;
-		}
-	};
-	for (const entry of entries ?? []) {
-		if (entry?.usage) {
-			attribute(entry.provider, entry.model, entry.usage);
-			continue;
-		}
-		const message = entry?.message;
-		if (message?.role === "assistant" && message.usage) {
-			attribute(message.provider, message.model, message.usage);
-		}
-	}
-	return { tokens, dollars: priced ? dollars : null };
-}
-
 /** Short model id for narrow screens: provider prefix dropped, then cut. */
 export function shortModelId(id: string, max = 16): string {
 	const base = id.includes("/") ? (id.split("/").pop() ?? id) : id;
@@ -158,7 +122,6 @@ export function shortModelId(id: string, max = 16): string {
 }
 
 const thousands = (n: number): string => (n >= 1000 ? `${Math.round(n / 1000)}k` : `${Math.round(n)}`);
-
 /** Session spend segment, or "" before the first turn. Dollars only when priced. */
 export function spendText(spend: { tokens: number; dollars: number | null }): string {
 	if (spend.tokens <= 0) return "";
@@ -196,7 +159,9 @@ export default function sparkFooter(pi: ExtensionAPI) {
   let frame = 0;
   let colorIndex = 0;
   let tui: TuiLike | undefined;
-  let spend = { tokens: 0, dollars: null as number | null };
+  let spend = { tokens: 0, dollars: null as number | null, steps: 0 };
+  let reserve = 0;
+  let paceLabel = "";
   let refreshing = false;
   let sessionRefs = {} as {
     model?: { provider?: string; id?: string } | null;
@@ -207,11 +172,29 @@ export default function sparkFooter(pi: ExtensionAPI) {
 
   // Usage entries land per LLM call, so recompute on turn end and on poll —
   // never per render frame (the spinner repaints at 120ms while working).
+
+  /** The reserve the footer should show: the student's, raised to any lab floor. */
+  const readReserve = async () => {
+    try {
+      return resolveReserve(await readPaceReserve(agentDir()), process.env.LEARNINGCODE_PACE_RESERVE).reserve;
+    } catch {
+      return 0;
+    }
+  };
+
   const recomputeSpend = () => {
     try {
       const entries = sessionRefs.sessionManager?.getEntries?.() ?? [];
       const find = sessionRefs.modelRegistry?.find?.bind(sessionRefs.modelRegistry);
       spend = sessionSpend(entries, find);
+      // The same harvest feeds pacing, so the footer and /pace agree. No extra
+      // fetch: the ceiling comes from the quota already polled.
+      const steps = stepsLeft({
+        remainingTokens: remainingTokens(quota),
+        tokensPerStep: tokensPerStep(spend.tokens, spend.steps),
+        reserve,
+      });
+      paceLabel = paceSegment({ steps, reserve });
     } catch {
       /* keep the last known spend rather than blanking mid-session */
     }
@@ -233,6 +216,7 @@ export default function sparkFooter(pi: ExtensionAPI) {
       refreshing = true;
       try {
         quota = await fetchQuota();
+        reserve = await readReserve();
         recomputeSpend();
         // Repaint in place. Notifying would be the wrong tool: an empty
         // notification still appends a row to the transcript, and the transcript is
@@ -335,16 +319,19 @@ export default function sparkFooter(pi: ExtensionAPI) {
 
           const spendLabel = spendText(spend);
           const maybeSpend = narrow || !spendLabel ? "" : safeFg(theme, "dim", `  ·  ${spendLabel}`);
+          // The pace estimate is the droppable segment on narrow screens: the
+          // bar and percent already say "can I run", and a phone line is scarce.
+          const maybePace = narrow || !paceLabel ? "" : safeFg(theme, "dim", `  ·  ${paceLabel}`);
 
           // Nothing to say off Spark, or no token: say so rather than draw a bar
           // full of empties that reads as "you have spent nothing".
           if (!token()) {
-            return [safeFg(theme, "muted", "  not on Spark") + maybeFolder + maybeModel + modeLabel + maybeSpend, hints];
+            return [safeFg(theme, "muted", "  not on Spark") + maybeFolder + maybeModel + modeLabel + maybeSpend + maybePace, hints];
           }
-          if (!quota) return [safeFg(theme, "dim", "  quota n/a") + maybeFolder + maybeModel + modeLabel + maybeSpend, hints];
+          if (!quota) return [safeFg(theme, "dim", "  quota n/a") + maybeFolder + maybeModel + modeLabel + maybeSpend + maybePace, hints];
 
           if (quota.aiEnabled === false) {
-            return [safeFg(theme, "error", "  AI disabled for your account — ask your teacher") + maybeFolder + maybeModel + modeLabel + maybeSpend, hints];
+            return [safeFg(theme, "error", "  AI disabled for your account — ask your teacher") + maybeFolder + maybeModel + modeLabel + maybeSpend + maybePace, hints];
           }
 
           // No ceiling: no meter and no percentage, because a full bar implies a
@@ -352,7 +339,7 @@ export default function sparkFooter(pi: ExtensionAPI) {
           if (isUnlimited(quota)) {
             return [
               safeFg(theme, "dim", `  ${Math.round(quota.tokensUsed / 1000)}k used today`) +
-                safeFg(theme, "muted", "  ·  unlimited") + maybeFolder + maybeModel + modeLabel + maybeSpend,
+                safeFg(theme, "muted", "  ·  unlimited") + maybeFolder + maybeModel + modeLabel + maybeSpend + maybePace,
               hints,
             ];
           }
@@ -362,7 +349,7 @@ export default function sparkFooter(pi: ExtensionAPI) {
           if (quota.dailyTokenLimit === null || quota.dailyTokenLimit === undefined) {
             return [
               safeFg(theme, "dim", `  ${Math.round(quota.tokensUsed / 1000)}k used today`) +
-                safeFg(theme, "muted", "  ·  no daily token cap") + maybeFolder + maybeModel + modeLabel + maybeSpend,
+                safeFg(theme, "muted", "  ·  no daily token cap") + maybeFolder + maybeModel + modeLabel + maybeSpend + maybePace,
               hints,
             ];
           }
@@ -380,7 +367,7 @@ export default function sparkFooter(pi: ExtensionAPI) {
             "dim",
             `${Math.round(tokensUsed / 1000)}k / ${Math.round(limit / 1000)}k today`,
           );
-          return [`  ${bar} ${percent}  ${numbers}` + maybeFolder + maybeModel + modeLabel + maybeSpend, hints];
+          return [`  ${bar} ${percent}  ${numbers}` + maybeFolder + maybeModel + modeLabel + maybeSpend + maybePace, hints];
         },
       };
     });
@@ -392,7 +379,9 @@ export default function sparkFooter(pi: ExtensionAPI) {
 
   pi.on("session_shutdown", async () => {
     setWorking(false);
-    spend = { tokens: 0, dollars: null };
+    spend = { tokens: 0, dollars: null, steps: 0 };
+    reserve = 0;
+    paceLabel = "";
     if (timer) clearInterval(timer);
     timer = undefined;
     tui = undefined;
@@ -404,6 +393,8 @@ export default function sparkFooter(pi: ExtensionAPI) {
 
   pi.on("agent_end", async () => {
     // Usage entries land with the turn; recompute before the repaint below.
+    // Re-read the reserve too, so `/pace reserve …` shows without a 2-minute wait.
+    reserve = await readReserve();
     recomputeSpend();
     setWorking(false);
   });

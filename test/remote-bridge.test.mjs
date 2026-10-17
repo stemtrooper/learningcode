@@ -288,6 +288,23 @@ test("extension notifications reach the phone as notes", async () => {
 	await bridge.stop();
 });
 
+test("a reserve stop reaches the phone with its escape hatch intact", async () => {
+	const agent = fakeAgent();
+	const socket = fakeSocket();
+	const bridge = new RemoteBridge(bridgeOptions({ agent, socket }));
+	await bridge.start();
+	socket.handlers.open();
+
+	const { stoppedMessage, paceLine } = await import("../lib/pace.mjs");
+	agent.emitUi({ method: "notify", message: paceLine({ steps: 4, reserve: 3 }) });
+	agent.emitUi({ method: "notify", message: stoppedMessage(3) });
+	const forwarded = socket.json("event").map((frame) => frame.event);
+	assert.deepEqual(forwarded[0], { type: "note", text: paceLine({ steps: 4, reserve: 3 }) });
+	assert.equal(forwarded[1].type, "note");
+	assert.match(forwarded[1].text, /\/pace reserve off/, "the phone shows how to keep going");
+	await bridge.stop();
+});
+
 test("the server can ask the computer to abort, and to shut down", async () => {
 	const agent = fakeAgent();
 	const socket = fakeSocket();

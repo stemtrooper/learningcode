@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { PI_EXTENSIONS } from "../lib/pi.mjs";
 
 test("the new features are registered as launch extensions", () => {
-	for (const name of ["approval.ts", "done-sound.ts", "checkpoint.ts", "intro.ts"]) {
+	for (const name of ["approval.ts", "done-sound.ts", "checkpoint.ts", "intro.ts", "pace.ts"]) {
 		assert.ok(PI_EXTENSIONS.includes(name), `${name} is loaded on every launch`);
 	}
 });
@@ -14,6 +14,13 @@ test("the approval extension asks before a destructive command and blocks withou
 	assert.match(src, /ctx\.ui\.select\(/);
 	assert.match(src, /block: true/);
 	assert.match(src, /ctx\.hasUI/);
+});
+
+test("the pace extension saves steps for later and stops cleanly", async () => {
+	const src = await readFile(new URL("../extensions/pace.ts", import.meta.url), "utf-8");
+	assert.match(src, /registerCommand\("pace"/);
+	assert.match(src, /block: true/);
+	assert.match(src, /LEARNINGCODE_PACE_RESERVE/);
 });
 
 test("the done sound rings once per turn, on agent_settled, in the terminal only", async () => {

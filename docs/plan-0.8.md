@@ -28,6 +28,16 @@ generation per student; fan-out would only earn 429s) and why they exist to
 *shrink* the main agent's context, not to add power. See `docs/plan-ws7.md`
 and `docs/subagents.md`.
 
+### Revision — 2026-10-17: quota pacing is not the deferred adult cap
+
+The "spend caps/kill-switch" above is **adult** control. Workstream 8
+(`docs/plan-ws8.md`) is the opposite: a **student-owned soft reserve** the
+student sets with `/pace reserve N` and lifts with `/pace reserve off`. There
+is no telemetry, no dashboard, and nothing a teacher can see. A lab floor
+(`LEARNINGCODE_PACE_RESERVE`) may only *raise* a student's reserve; it can
+never impose a cap the student cannot lift. The teacher dashboard and the
+hard kill-switch remain deferred.
+
 ## Workstreams
 
 ### 1. First-run that teaches itself (onboarding)

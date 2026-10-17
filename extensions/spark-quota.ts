@@ -2,6 +2,9 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { agentDir } from "../lib/config.mjs";
 import { cachedTokenPrefix } from "../lib/token.mjs";
 import { quotaErrorLine, quotaResetLine, seatsErrorLine, startupFailureLine, queuePositionLine } from "../lib/failure.mjs";
+import { paceLine, remainingTokens, resolveReserve, stepsLeft, tokensPerStep } from "../lib/pace.mjs";
+import { readPaceReserve } from "../lib/settings.mjs";
+import { sessionSpend } from "../lib/spend.mjs";
 
 /**
  * Spark-aware status for the learningcode client.
@@ -64,10 +67,12 @@ const isUnlimited = (body: QuotaBody): boolean => body.quotaExempt === true;
 
 const thousands = (value: number): string => `${Math.round(value / 1000)}k`;
 
-function quotaLine(body: QuotaBody): string {
+const withPace = (line: string, pace: string): string => (pace ? `${line}  |  ${pace}` : line);
+
+function quotaLine(body: QuotaBody, pace = ""): string {
 	const used = num(body.tokensUsed);
 	if (isUnlimited(body)) {
-		return [
+		return withPace([
 			`Spark quota - ${used.toLocaleString()} tokens used, unlimited`,
 			"exempt",
 			`jobs ${num(body.jobsUsed)}`,
@@ -75,32 +80,56 @@ function quotaLine(body: QuotaBody): string {
 			body.aiEnabled === false ? "AI DISABLED for your account - ask your teacher" : "",
 		]
 			.filter(Boolean)
-			.join("  |  ");
+			.join("  |  "), pace);
 	}
 	if (body.dailyTokenLimit === null || body.dailyTokenLimit === undefined) {
-		return [
+		return withPace([
 			`Spark quota - ${used.toLocaleString()} tokens used today, no daily token cap`,
 			`jobs ${num(body.jobsUsed)}/${num(body.dailyJobLimit)}`,
 			quotaResetLine(),
 			body.aiEnabled === false ? "AI DISABLED for your account - ask your teacher" : "",
 		]
 			.filter(Boolean)
-			.join("  |  ");
+			.join("  |  "), pace);
 	}
 
 	const limit = body.dailyTokenLimit;
 	const pct = limit > 0 ? ` (${Math.round((used / limit) * 100)}%)` : "";
-	return [
+	return withPace([
 		`Spark quota - ${used.toLocaleString()}/${limit.toLocaleString()} tokens${pct}`,
 		`jobs ${num(body.jobsUsed)}/${num(body.dailyJobLimit)}`,
 		quotaResetLine(),
 		body.aiEnabled === false ? "AI DISABLED for your account - ask your teacher" : "",
 	]
 		.filter(Boolean)
-		.join("  |  ");
+		.join("  |  "), pace);
 }
 
-export const _internals = { quotaLine, isUnlimited, thousands, num, call };
+/**
+ * The pace sentence for `/quota`: about how many more steps today, from the
+ * same session harvest the footer uses, plus the quota reset tail. No network —
+ * the caller already has the quota body.
+ */
+async function paceText(body: QuotaBody, ctx: { sessionManager?: { getEntries?: () => unknown[] } }): Promise<string> {
+	const entries = (ctx?.sessionManager?.getEntries?.() ?? []) as Parameters<typeof sessionSpend>[0];
+	const spend = sessionSpend(entries);
+	let reserve = 0;
+	try {
+		// The same lab pin the stop uses, so the two cannot disagree.
+		reserve = resolveReserve(await readPaceReserve(agentDir()), process.env.LEARNINGCODE_PACE_RESERVE).reserve;
+	} catch {
+		reserve = 0;
+	}
+	const steps = stepsLeft({
+		remainingTokens: remainingTokens(body),
+		tokensPerStep: tokensPerStep(spend.tokens, spend.steps),
+		reserve,
+	});
+	// No reset tail: quotaLine already carries the reset time.
+	return paceLine({ steps, reserve });
+}
+
+export const _internals = { quotaLine, isUnlimited, thousands, num, call, paceText };
 
 /**
  * The queue view shape is not guaranteed, so surface the fields we recognise
@@ -123,10 +152,12 @@ export default function sparkQuota(pi: ExtensionAPI) {
 		description: "Show your Spark token spend for today",
 		handler: async (_args, ctx) => {
 			const result = await call("/me/quota");
-			ctx.ui.notify(
-				result.ok ? quotaLine(result.body as QuotaBody) : quotaErrorLine(result, baseUrl()),
-				result.ok ? "info" : "warning",
-			);
+			if (!result.ok) {
+				ctx.ui.notify(quotaErrorLine(result, baseUrl()), "warning");
+				return;
+			}
+			const body = result.body as QuotaBody;
+			ctx.ui.notify(quotaLine(body, await paceText(body, ctx)), "info");
 		},
 	});
 

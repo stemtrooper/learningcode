@@ -3,7 +3,7 @@ import test from "node:test";
 import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addAlwaysAllow, addAlwaysAllowKind, ALWAYS_ALLOW_KEY, ALWAYS_ALLOW_KINDS_KEY, readAlwaysAllow, readAlwaysAllowKinds, readPlanStrict, setPlanStrict } from "../lib/settings.mjs";
+import { addAlwaysAllow, addAlwaysAllowKind, ALWAYS_ALLOW_KEY, ALWAYS_ALLOW_KINDS_KEY, PACE_RESERVE_KEY, readAlwaysAllow, readAlwaysAllowKinds, readPaceReserve, readPlanStrict, setPaceReserve, setPlanStrict } from "../lib/settings.mjs";
 
 const scratch = () => mkdtemp(join(tmpdir(), "lc-settings-"));
 
@@ -16,6 +16,33 @@ test("the strict plan preset reads false by default and round-trips", async () =
 		assert.equal(await setPlanStrict(dir, true), false, "repeat is a no-op");
 		assert.equal(await setPlanStrict(dir, false), true);
 		assert.equal(await readPlanStrict(dir), false);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test("the pace reserve reads 0 by default and round-trips", async () => {
+	const dir = await scratch();
+	try {
+		assert.equal(PACE_RESERVE_KEY, "paceReserve");
+		assert.equal(await readPaceReserve(dir), 0, "absent file means off");
+		assert.equal(await setPaceReserve(dir, 3), true, "first change reports a change");
+		assert.equal(await readPaceReserve(dir), 3);
+		assert.equal(await setPaceReserve(dir, 3), false, "repeat is a no-op");
+		assert.equal(await setPaceReserve(dir, 0), true);
+		assert.equal(await readPaceReserve(dir), 0, "off clears it");
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test("a junk pace reserve reads as off rather than throwing", async () => {
+	const dir = await scratch();
+	try {
+		await writeFile(join(dir, "settings.json"), JSON.stringify({ [PACE_RESERVE_KEY]: -4 }), "utf-8");
+		assert.equal(await readPaceReserve(dir), 0);
+		assert.equal(await setPaceReserve(dir, "banana"), true, "junk normalises to off");
+		assert.equal(await readPaceReserve(dir), 0);
 	} finally {
 		await rm(dir, { recursive: true, force: true });
 	}
