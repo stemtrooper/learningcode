@@ -1,6 +1,13 @@
 # WS7 — Sub-agent interface
 
-**Status:** proposed (plan only — no code yet)
+**Status:** shipped — 0.14.0. Built as planned; two notes changed in the doing:
+the child does **not** pass `--no-skills` (it is not in the child argv — skills
+are already off in a `-p` run, and the flag is unnecessary), and the "best-effort
+visibility" layer also listens to `model_select` so a `/model` switch in either
+direction keeps the active set in step. Live verification: a `scout` child, a
+`worker` child whose edit landed in the parent journal, and a two-helper
+parallel run all succeeded against a real provider off Spark; the Spark gate is
+unit-tested (the dev token was expired for a live Spark call).
 **Placement:** post-0.8. First feature of the 0.9 line, **after** WS5 (phone parity)
 and WS6 (speed budgets) land.
 **Audience:** students. Same rule as ever — student language, no stack traces.

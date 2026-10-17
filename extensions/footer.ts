@@ -1,6 +1,11 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { activeModelId } from "../lib/active-model.mjs";
 import { folderLabel } from "../lib/folder.mjs";
 import { inverseBox, safeFg } from "../lib/theme.mjs";
+
+// The footer and the sub-agent gate must agree on the active model, so it lives
+// in lib/active-model.mjs. Keep the historical named export here for importers.
+export { activeModelId };
 
 /**
  * A persistent footer showing what a Spark student actually needs to know:
@@ -177,17 +182,8 @@ async function fetchQuota(): Promise<Quota | null> {
   }
 }
 
-/**
- * Read the active model id live at render time (`provider/model`), so a
- * `/model` switch or `--model opencode-go/...` shows without a restart.
- * The session_start ctx carries the live session object, so reading it per
- * render is enough; no model-change subscription to go stale.
- */
-export function activeModelId(ctx: unknown): string {
-	const model = (ctx as { model?: { provider?: string; id?: string } | null })?.model;
-	if (!model?.id) return "no-model";
-	return model.provider ? `${model.provider}/${model.id}` : model.id;
-}
+// `activeModelId` now lives in lib/active-model.mjs so the footer and the
+// sub-agent gate share one implementation; it is re-exported at the top.
 
 /** Status key the plan-mode extension sets while planning. */
 const STATUS_PLAN_KEY = "plan-mode";

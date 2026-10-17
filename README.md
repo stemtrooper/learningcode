@@ -304,6 +304,37 @@ instead; it continues the same conversation.
 
 ---
 
+## Helpers for big jobs
+
+Sometimes a job means reading a dozen files before one small question can be
+answered — and all that reading fills the assistant's own memory, making it
+slower and vaguer as the session goes on. The assistant can hand that kind of
+job to a **helper**: a fresh copy of itself with its own clean memory, which
+does the reading and returns a few lines.
+
+You do not summon a helper by hand — the assistant decides, the same way it
+decides to open a file. When it does, you see which helper ran and a one-line
+result, and **Ctrl+O** opens the full answer. Four helpers ship with the
+package:
+
+| Helper | Job |
+|---|---|
+| `scout` | look around and report what's where |
+| `reviewer` | a second opinion on work so far |
+| `planner` | turn a goal into ordered steps |
+| `worker` | do one small, complete piece of work |
+
+The assistant can run several helpers at once, or pass one helper's answer to
+the next in a chain. Anything a helper changes is recorded like the assistant's
+own edits, so **`/undo`** puts it back — a helper cannot lose your work.
+
+Helpers need a model that can run more than one answer at a time. TLC-Spark
+serves one generation per student, so helpers stay **off** there; switch with
+`/model` to a provider of your own to use them. See
+[docs/subagents.md](docs/subagents.md) for the design and the safety rules.
+
+---
+
 ## What it looks like
 
 The TLC brand theme and banner ship with the package, so there is nothing to
@@ -465,9 +496,9 @@ learningcode --model commandcode/deepseek/deepseek-v4-pro
 `COMMANDCODE_API_KEY` works instead of a stored key. Every plan except the free
 Go tier has API access.
 
-**Seat awareness.** Spark enforces one active generation per student, so the
-client runs strictly serially with subagents off. Expect a 429 rather than
-parallel fan-out.
+**Seat awareness.** Spark enforces one active generation per student, so on Spark
+the client runs strictly serially and helpers (sub-agents) stay off — they run on
+any other provider. Expect a 429 rather than parallel fan-out.
 
 </details>
 

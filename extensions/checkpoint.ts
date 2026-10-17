@@ -1,6 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { agentDir } from "../lib/config.mjs";
-import { loadJournal, recordChange, restoreJournal, summarizeJournal } from "../lib/undo-journal.mjs";
+import { loadJournal, restoreJournal, summarizeJournal } from "../lib/undo-journal.mjs";
+import { recordToolCall } from "../lib/undo-record.mjs";
 
 /**
  * Undo: puts back what the agent changed.
@@ -20,16 +21,10 @@ import { loadJournal, recordChange, restoreJournal, summarizeJournal } from "../
 export default function (pi: ExtensionAPI) {
 	// Record files just before the agent changes them, so the pre-state exists
 	// when /undo asks for it. Only the structured file tools can be tracked;
-	// shell effects are why the git layer is still here.
+	// shell effects are why the git layer is still here. The recorder is shared
+	// with the child-only undo-record extension, so the two cannot drift.
 	pi.on("tool_call", async (event, ctx) => {
-		const name = (event as { toolName?: string }).toolName;
-		if (name !== "edit" && name !== "write") return undefined;
-		const path = (event as { input?: { path?: unknown } }).input?.path;
-		if (typeof path !== "string" || !path) return undefined;
-		const dir = agentDir();
-		const sessionId = ctx.sessionManager?.getSessionId?.() ?? null;
-		if (!dir || !sessionId) return undefined;
-		await recordChange(dir, sessionId, ctx.cwd, path);
+		await recordToolCall(event as never, ctx as never);
 		return undefined;
 	});
 

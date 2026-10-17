@@ -1,8 +1,9 @@
 # LearningCode 0.8 — student-first launch readiness
 
-Status: **in progress — 0.8.x hardened; workstream 3 (never lose work) is
-done as of 0.9.2; workstream 4 (plan templates + strict preset) done as of
-0.11.0; workstreams 5–6 remain.** Audience: students,
+Status: **complete — all workstreams done.** Workstream 3 (never lose work)
+done as of 0.9.2; workstream 4 (plan templates + strict preset) as of 0.11.0;
+workstream 5 (phone parity) as of 0.12.1; workstream 6 (speed) as of 0.13.0;
+workstream 7 (sub-agent interface) as of 0.14.0. Audience: students,
 explicitly not teachers or parents. Every item is judged by one
 question: does it make a student's worst day better? If it serves an
 adult's dashboard instead, it belongs in 0.9 or later.
@@ -15,6 +16,17 @@ adult's dashboard instead, it belongs in 0.9 or later.
 - **No capability breadth.** No new models, IDE plugins, background
   agents, or subagent machinery. 0.8 is trust and friction, not power.
 - **Minor bump → 0.8.0** with tag, CHANGELOG entry, README updates.
+
+### Revision — 2026-10-17: sub-agent machinery admitted (post-0.8)
+
+The "no subagent machinery" lock above was a 0.8-scope decision, and it is
+being **reversed deliberately**, in the same file, rather than silently
+contradicted: workstream 7 (below) ships sub-agents as the first feature of
+the 0.9 line. The reasoning for the original lock — student hours are scarce —
+still holds, and is why helpers are **gated off TLC-Spark** (one active
+generation per student; fan-out would only earn 429s) and why they exist to
+*shrink* the main agent's context, not to add power. See `docs/plan-ws7.md`
+and `docs/subagents.md`.
 
 ## Workstreams
 
@@ -124,6 +136,35 @@ and web-ui suites cover the raised bound and the new rendering.
   network.
 
 Tests: `test/startup.test.mjs`.
+
+### 7. Sub-agent interface (helpers) — DONE
+
+- [x] A `subagent` **tool** (model-only — no `/` command) that delegates a
+  job to a fresh, isolated context and returns a compressed answer. Three
+  modes with Pi's semantics: `single`, `parallel`, `chain` (`{previous}`
+  placeholder). (0.14.0)
+- [x] **Hard gate on the active provider** (`ctx.model.provider`, read live):
+  helpers run on every provider **except TLC-Spark**, which enforces one
+  active generation per student. Enforced twice — removed from the active set
+  while Spark is the model, and re-checked at call time so a mid-session
+  `/model` switch cannot slip past.
+- [x] **Shipped agents only** in v1: four curated helpers (`scout`,
+  `reviewer`, `planner`, `worker`) discovered from the package's own
+  `agents/` directory. Read-only by default; no project- or user-local agent
+  files, so a classroom repo cannot inject one.
+- [x] **Never lose work holds**: a helper's file edits are journalled into the
+  *parent's* session journal via `LEARNINGCODE_UNDO_SESSION`, so `/undo`
+  recovers them. `undo-record.ts` (child) and `checkpoint.ts` (parent) share
+  one recorder so they cannot drift.
+- [x] Student language throughout: live `🔎 scout is working…`, result
+  `✓ scout: found 4 files`, failures as one sentence. No usage, cost, exit
+  codes, stderr, or JSON.
+
+Tests: `test/subagent-gate.test.mjs`, `subagent-agents.test.mjs`,
+`subagent-child.test.mjs`, `subagent-render.test.mjs`,
+`subagent-run.test.mjs`, `subagent-extension.test.mjs`,
+`undo-record.test.mjs`; the real-Pi child handshake is covered by the opt-in
+`test/subagent-e2e.test.mjs` (`npm run test:e2e`).
 
 ## Non-goals (deferred past 0.8)
 

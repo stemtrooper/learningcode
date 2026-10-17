@@ -564,9 +564,11 @@ async function main() {
 			arg.startsWith("--use-theme="),
 	);
 
-	// Spark enforces one active generation per student, so subagents and parallel
-	// tool calls would only earn 429s. Pi is serial by default; skills and rules
-	// are pure prompt-token spend against a 32K ceiling, so they stay off.
+	// Spark enforces one active generation per student, so parallel tool calls
+	// would only earn 429s. Pi is serial by default, and the helper (sub-agent)
+	// tool is gated off Spark at the extension layer — it stays in the active
+	// set only on other providers. Skills and rules are pure prompt-token spend
+	// against a 32K ceiling, so they stay off.
 	// The model, theme, skills and extension flags are shared with
 	// `learningcode remote` through lib/pi.mjs, so a remote session cannot drift
 	// from an interactive one.
