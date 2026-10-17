@@ -18,9 +18,9 @@ inference through **TLC-Spark**.
 general-purpose AI coding tool: the model, the quota and the seat limits all belong
 to TLC, and every token you spend comes out of your course allocation.
 
-> **New in 0.12.1** — the QR code and link used by `learningcode remote` are
-> cleared from the screen once your phone connects, so a passer-by can't scan
-> them to join your session. See [Changelog](#changelog).
+> **New in 0.13.0** — learningcode starts without waiting on a network check.
+> The Spark reachability preflight now runs under a small budget, so a slow
+> network no longer holds up your prompt. See [Changelog](#changelog).
 
 ---
 
@@ -488,6 +488,10 @@ often, and a student's install must not change underneath them mid-term.
 
 ## Changelog
 
+* **0.13.0** — speed: the launcher no longer blocks on the Spark
+  reachability preflight before showing a prompt. It runs under a 350ms
+  budget, so a slow network can't hold up startup; a real outage still shows
+  up on the first request and on `/quota` and `/seats`.
 * **0.12.1** — remote privacy: once a phone attaches, the QR code and link are
   cleared from the computer screen so no one walking past can scan them. The
   attached phone keeps working, including after sleep.

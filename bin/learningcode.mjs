@@ -53,6 +53,7 @@ import { remoteStatus, remoteStop, rotateRemote, runRemote, runRemoteServer } fr
 import { formatNotice, markNoticeShown, pendingNotice } from "../lib/changelog.mjs";
 import { fatalMessage, fixStaleToken } from "../lib/failure.mjs";
 import { AUTO_INTRO_ENV, NO_INTRO_ENV, hasSeenIntro, shouldAutoIntro } from "../lib/intro.mjs";
+import { CHECK_TIMEOUT_MS, STARTUP_HEALTH_BUDGET_MS, withinBudget } from "../lib/startup.mjs";
 
 const require = createRequire(import.meta.url);
 
@@ -394,7 +395,7 @@ async function runRemoteCommand({ command, subcommand, flags }) {
 /** Non-fatal reachability probe so students get a useful message, not a stack trace. */
 async function checkEndpoint(baseUrl, token) {
 	const controller = new AbortController();
-	const timer = setTimeout(() => controller.abort(), 5000);
+	const timer = setTimeout(() => controller.abort(), CHECK_TIMEOUT_MS);
 	try {
 		const response = await fetch(`${baseUrl}/models`, {
 			headers: { Authorization: `Bearer ${token}` },
@@ -652,8 +653,13 @@ async function main() {
 	}
 
 	if (usesSpark) {
-		const health = await checkEndpoint(sparkBaseUrl(), token);
-		if (!health.ok) {
+		// A reachability probe earns a warning, not a delay. On a shared lab
+		// network it can take a second or more, and all of it lands before the
+		// student sees a prompt. Give it a small budget; if it has not answered
+		// by then, start anyway — the first request and the /quota and /seats
+		// errors already say what is wrong, in plain words.
+		const health = await withinBudget(checkEndpoint(sparkBaseUrl(), token), STARTUP_HEALTH_BUDGET_MS);
+		if (health && !health.ok) {
 			process.stderr.write(
 				`learningcode: warning - Spark at ${sparkBaseUrl()} is not answering (${health.reason}).\n` +
 					"Continuing anyway; check your network or token if the first request fails.\n",

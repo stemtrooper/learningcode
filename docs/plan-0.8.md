@@ -101,12 +101,29 @@ asserts the echoed line, the readable note, and the settle; the sanitizer
 and web-ui suites cover the raised bound and the new rendering.
 
 
-### 6. Speed (latency is the experience)
+### 6. Speed (latency is the experience) — DONE
 
-- Budgets: cold startup time, first-token time, seat-queue fairness on
-  shared lab networks. Measure first, then cut.
-- No feature in 0.8 may regress startup; the test suite asserts the
-  budget the way `installer.test.mjs` asserts the Node floor today.
+- [x] Measured cold startup and cut the one thing in front of it. The
+  launcher's own bootstrap is short (`--version` lands in ~90–150ms: module
+  load, parse, config), but the Spark reachability preflight blocked on a
+  network round-trip before spawning Pi: ~900ms against a healthy gateway
+  from the test machine, up to its full 5s request timeout on a bad one —
+  all of it before a prompt appeared. The preflight now runs under a 350ms
+  budget (`lib/startup.mjs`, `withinBudget`); a slow probe is abandoned and
+  the first request, plus the `/quota` and `/seats` errors, report a real
+  outage in plain words. (0.13.0)
+- [x] Budget asserted in the suite the way `installer.test.mjs` asserts the
+  Node floor: `test/startup.test.mjs` checks the cold start against
+  `STARTUP_BUDGET_MS`, the preflight against `STARTUP_HEALTH_BUDGET_MS`
+  (which must sit below `CHECK_TIMEOUT_MS`), unit-tests `withinBudget` for
+  the slow/fast/failing cases, and structurally bans a bare
+  `await checkEndpoint(` from creeping back.
+- First-token time and seat-queue fairness are gateway-side: model latency
+  and Spark's own queue, not launcher work. The one launcher-side lever —
+  the preflight — is now bounded; nothing else on the path waits on the
+  network.
+
+Tests: `test/startup.test.mjs`.
 
 ## Non-goals (deferred past 0.8)
 
