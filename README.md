@@ -18,10 +18,9 @@ inference through **TLC-Spark**.
 general-purpose AI coding tool: the model, the quota and the seat limits all belong
 to TLC, and every token you spend comes out of your course allocation.
 
-> **New in 0.12.0** — every command works from the phone now. If you drive your
-> session with `learningcode remote`, `/quota`, `/seats`, `/todo`, `/todos`,
-> `/approve` and `/plan` answer as readable text and settle the screen when they
-> finish. See [Changelog](#changelog).
+> **New in 0.12.1** — the QR code and link used by `learningcode remote` are
+> cleared from the screen once your phone connects, so a passer-by can't scan
+> them to join your session. See [Changelog](#changelog).
 
 ---
 
@@ -489,6 +488,9 @@ often, and a student's install must not change underneath them mid-term.
 
 ## Changelog
 
+* **0.12.1** — remote privacy: once a phone attaches, the QR code and link are
+  cleared from the computer screen so no one walking past can scan them. The
+  attached phone keeps working, including after sleep.
 * **0.12.0** — remote parity: every command (`/quota`, `/seats`, `/todo`,
   `/todos`, `/approve`, `/plan`, `/undo`) works from the phone. Command answers
   now render as readable text that keeps its line breaks instead of a one-line
