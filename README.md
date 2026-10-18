@@ -439,6 +439,7 @@ to Spark, and no telemetry is sent.
 | `RIVER_API_KEY` | River AI key, or store one with `--login-provider river` |
 | `EXPLABS_API_KEY` | ExpLabs key, or store one with `--login-provider explabs` |
 | `COMMANDCODE_API_KEY` | CommandCode key, or store one with `--login-provider commandcode` |
+| `ORCAROUTER_API_KEY` | OrcaRouter key, or store one with `--login-provider orcarouter` |
 
 ```bash
 learningcode --show-config     # show resolved paths and settings
@@ -513,6 +514,25 @@ learningcode --model commandcode/deepseek/deepseek-v4-pro
 `COMMANDCODE_API_KEY` works instead of a stored key. Every plan except the free
 Go tier has API access.
 
+**OrcaRouter.** [OrcaRouter](https://www.orcarouter.ai/) is an OpenAI-compatible
+gateway at `https://api.orcarouter.ai/v1` that routes to OpenAI, Anthropic,
+Google Gemini, DeepSeek, xAI Grok, Alibaba Qwen, Moonshot Kimi, MiniMax and
+Z.ai at provider cost. Mint an `sk-orca-` key in the
+[console](https://www.orcarouter.ai/console), log in once, and its models join
+`/model` (ids are provider-prefixed, e.g. `orcarouter/openai/gpt-4o-mini`):
+
+```bash
+learningcode --login-provider orcarouter   # paste an sk-orca- key
+learningcode --model orcarouter/openai/gpt-4o-mini
+learningcode --model orcarouter/anthropic/claude-sonnet-4.6
+```
+
+The model list is read from OrcaRouter's live `/v1/models` at login, scoped to
+your key, and cached for offline launches. `ORCAROUTER_API_KEY` works instead
+of a stored key. You can also sign in from inside learningcode with `/login`
+(*Sign in with an API key*, then OrcaRouter); the catalogue syncs to that key on
+the next launch.
+
 **Seat awareness.** Spark enforces one active generation per student, so on Spark
 the client runs strictly serially and helpers (sub-agents) stay off — they run on
 any other provider. Expect a 429 rather than parallel fan-out.
@@ -536,6 +556,12 @@ often, and a student's install must not change underneath them mid-term.
 
 ## Changelog
 
+* **0.16.0** — OrcaRouter is a provider you can log in to from learningcode:
+  `learningcode --login-provider orcarouter` (your `sk-orca-` key is entered
+  without echo), or `/login` inside learningcode. Its catalogue is fetched live
+  and scoped to your key, so `/model` lists exactly the models your account can
+  reach — non-chat entries are filtered out — and `ORCAROUTER_API_KEY` works
+  instead of a stored key.
 * **0.15.0** — quota pacing: the footer and `/quota` say *about how many more
   steps today*, and `/pace reserve N` keeps a few steps back so the assistant
   stops before changing files instead of running the day's Spark quota to zero.

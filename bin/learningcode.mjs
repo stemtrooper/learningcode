@@ -13,7 +13,7 @@ import {
 	compareVersions,
 	sparkBaseUrl,
 } from "../lib/config.mjs";
-import { GO_PROVIDER, loggedInProviders, saveProviderKey, visibleModelPatterns } from "../lib/auth.mjs";
+import { GO_PROVIDER, loggedInProviders, providerKey, saveProviderKey, visibleModelPatterns } from "../lib/auth.mjs";
 import { doctorReport } from "../lib/doctor.mjs";
 import {
 	TOKENHARBOR_PROVIDER,
@@ -36,6 +36,13 @@ import {
 	ensureCommandCodeProvider,
 	looksLikeCommandCodeKey,
 } from "../lib/commandcode.mjs";
+import {
+	ORCAROUTER_KEY_PAGE,
+	ORCAROUTER_PROVIDER,
+	ORCAROUTER_STARTUP_TIMEOUT_MS,
+	ensureOrcaRouterProvider,
+	looksLikeOrcaRouterKey,
+} from "../lib/orcarouter.mjs";
 import { ensureSparkProvider, modelsPath, retargetProvider } from "../lib/models.mjs";
 import { ensureQuietStartup, ensureThinkingCycleKey, persistedModelPrefs, seedModelPrefs } from "../lib/settings.mjs";
 import { ensureThemes, preferredTheme } from "../lib/themes.mjs";
@@ -70,7 +77,7 @@ Setup
   --login            Re-enter and cache your Spark token
   --login-provider <name>
                      Store a key for another provider: tokenharbor, river,
-                     explabs, commandcode
+                     explabs, commandcode, orcarouter
   --show-config      Print resolved paths and settings, then exit
   --no-intro         Skip the first-run guided tour
   -h, --help         Show this help
@@ -104,6 +111,9 @@ Other providers
   learningcode --login-provider commandcode
   learningcode --model commandcode/claude-sonnet-5-5
 
+  learningcode --login-provider orcarouter
+  learningcode --model orcarouter/openai/gpt-4o-mini
+
 Environment
   LEARNINGCODE_DIR            agent directory (default ~/.learningcode/agent)
   LEARNINGCODE_SPARK_BASE_URL default https://spark.learning.com.my/v1
@@ -113,6 +123,7 @@ Environment
   RIVER_API_KEY               auth for the river provider (or --login-provider river)
   EXPLABS_API_KEY             auth for the explabs provider (or --login-provider explabs)
   COMMANDCODE_API_KEY         auth for the commandcode provider (or --login-provider commandcode)
+  ORCAROUTER_API_KEY          auth for the orcarouter provider (or --login-provider orcarouter)
   ${PI_AGENT_DIR_ENV}  set automatically; points Pi at the learningcode agent dir
 
 Remote
@@ -490,6 +501,16 @@ async function main() {
 	await ensureRiverProvider(dir).catch(() => {});
 	await ensureExplabsProvider(dir).catch(() => {});
 	await ensureCommandCodeProvider(dir).catch(() => {});
+	// OrcaRouter's catalogue is per-key. A key stored through Pi's own `/login`
+	// has no launcher hook, so the catalogue is re-synced here on the next launch
+	// when the cache is missing or was built for a different key; a warm install
+	// just reads the cache. Bounded, and never fatal to the launch.
+	const orcaKey = await providerKey(dir, ORCAROUTER_PROVIDER).catch(() => null);
+	await ensureOrcaRouterProvider(dir, {
+		key: orcaKey ?? undefined,
+		autoSync: true,
+		timeoutMs: ORCAROUTER_STARTUP_TIMEOUT_MS,
+	}).catch(() => {});
 	await ensureThemes(dir);
 	await ensureQuietStartup(dir);
 	await ensureThinkingCycleKey(dir).catch(() => {});
@@ -542,7 +563,20 @@ async function main() {
 			process.stdout.write("Saved. CommandCode models now appear in /model.\n");
 			return;
 		}
-		fail(`no login set up for "${own.loginProvider}". Available: ${TOKENHARBOR_PROVIDER}, ${RIVER_PROVIDER}, ${EXPLABS_PROVIDER}, ${COMMANDCODE_PROVIDER}`);
+		if (provider === "orcarouter" || provider === "orca") {
+			process.stdout.write(`Get an sk-orca- key at ${ORCAROUTER_KEY_PAGE}\n`);
+			const key = (await promptSecret("OrcaRouter key (sk-orca-...): ")).trim();
+			if (!looksLikeOrcaRouterKey(key)) {
+				fail("that does not look like an OrcaRouter key (they start with sk-orca-). Nothing was saved.");
+			}
+			await saveProviderKey(dir, ORCAROUTER_PROVIDER, key);
+			// Fetch the catalogue with the key, so /model lists the models this
+			// account may actually reach rather than the public list.
+			await ensureOrcaRouterProvider(dir, { refresh: true, key });
+			process.stdout.write("Saved. OrcaRouter models now appear in /model.\n");
+			return;
+		}
+		fail(`no login set up for "${own.loginProvider}". Available: ${TOKENHARBOR_PROVIDER}, ${RIVER_PROVIDER}, ${EXPLABS_PROVIDER}, ${COMMANDCODE_PROVIDER}, ${ORCAROUTER_PROVIDER}`);
 	}
 
 	// `--login` forces a fresh paste even when a token is already cached.
