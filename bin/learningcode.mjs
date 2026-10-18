@@ -13,7 +13,7 @@ import {
 	compareVersions,
 	sparkBaseUrl,
 } from "../lib/config.mjs";
-import { GO_PROVIDER, loggedInProviders, providerKey, saveProviderKey, visibleModelPatterns } from "../lib/auth.mjs";
+import { GO_PROVIDER, loggedInProviders, providerKey, saveProviderKey } from "../lib/auth.mjs";
 import { doctorReport } from "../lib/doctor.mjs";
 import {
 	TOKENHARBOR_PROVIDER,
@@ -44,7 +44,8 @@ import {
 	looksLikeOrcaRouterKey,
 } from "../lib/orcarouter.mjs";
 import { ensureSparkProvider, modelsPath, retargetProvider } from "../lib/models.mjs";
-import { ensureQuietStartup, ensureThinkingCycleKey, persistedModelPrefs, seedModelPrefs } from "../lib/settings.mjs";
+import { modelScopePlan } from "../lib/model-scope.mjs";
+import { ensureQuietStartup, ensureThinkingCycleKey, extendModelScope, persistedModelPrefs, scopedProviders, seedModelPrefs } from "../lib/settings.mjs";
 import { ensureThemes, preferredTheme } from "../lib/themes.mjs";
 import {
 	hasToken,
@@ -614,14 +615,26 @@ async function main() {
 	const userPickedModels = toPi.some((arg) => arg === "--models" || arg.startsWith("--models="));
 	const persisted = persistedEarly;
 	let scope = null;
-	if (!requestedModel && !userPickedModels && !persisted.enabledModels) {
-		// Seed once so the picker starts scoped to logged-in providers; after
-		// that the persisted scope always wins and is never extended here.
-		// (Auto-extending "uncovered" providers re-added everything the
-		// student had just unchecked in /scoped-models.) After a new login,
-		// add its models via /scoped-models instead.
-		scope = visibleModelPatterns(piModelListing(piEntry, dir), await loggedInProviders(dir));
-		if (scope) await seedModelPrefs(dir, { enabledModels: scope });
+	if (!requestedModel && !userPickedModels) {
+		const plan = modelScopePlan({
+			enabledModels: persisted.enabledModels,
+			scopedProviders: await scopedProviders(dir),
+			loggedIn: await loggedInProviders(dir),
+			listModels: () => piModelListing(piEntry, dir),
+		});
+		if (plan?.seed) {
+			// First launch: scope the picker to the providers already logged in.
+			scope = plan.enabledModels;
+			await seedModelPrefs(dir, { enabledModels: scope });
+			await extendModelScope(dir, { providers: plan.providers });
+		} else if (plan) {
+			// A provider signed into after the seed (Pi's /login or
+			// `--login-provider`) is missing from the scope, so its models never
+			// appeared. Fold each newly-seen provider in once and record it as
+			// considered, so this runs a single time per provider and a model the
+			// student later unchecks is never brought back.
+			await extendModelScope(dir, { patterns: plan.patterns, providers: plan.providers });
+		}
 	}
 	if (!requestedModel && !persisted.defaultModel) {
 		await seedModelPrefs(dir, { defaultModel: `${PROVIDER_ID}/${MODEL_ID}` });

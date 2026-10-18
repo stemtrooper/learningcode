@@ -3,7 +3,7 @@ import test from "node:test";
 import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addAlwaysAllow, addAlwaysAllowKind, ALWAYS_ALLOW_KEY, ALWAYS_ALLOW_KINDS_KEY, PACE_RESERVE_KEY, readAlwaysAllow, readAlwaysAllowKinds, readPaceReserve, readPlanStrict, setPaceReserve, setPlanStrict } from "../lib/settings.mjs";
+import { addAlwaysAllow, addAlwaysAllowKind, ALWAYS_ALLOW_KEY, ALWAYS_ALLOW_KINDS_KEY, extendModelScope, PACE_RESERVE_KEY, readAlwaysAllow, readAlwaysAllowKinds, readPaceReserve, readPlanStrict, scopedProviders, SCOPED_PROVIDERS_KEY, setPaceReserve, setPlanStrict } from "../lib/settings.mjs";
 
 const scratch = () => mkdtemp(join(tmpdir(), "lc-settings-"));
 
@@ -160,6 +160,66 @@ test("readAlwaysAllowKinds tolerates a missing key and junk entries", async () =
 			"utf-8",
 		);
 		assert.deepEqual(await readAlwaysAllowKinds(dir), ["sudo", "delete-files"]);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test("the scoped-providers key is exported", () => {
+	assert.equal(SCOPED_PROVIDERS_KEY, "scopedProviders");
+});
+
+test("scopedProviders reads the recorded ids and tolerates junk", async () => {
+	const dir = await scratch();
+	try {
+		assert.deepEqual([...(await scopedProviders(dir))], [], "absent means none");
+		await writeFile(
+			join(dir, "settings.json"),
+			`${JSON.stringify({ [SCOPED_PROVIDERS_KEY]: ["orcarouter", 5, null, "tlc-spark"] }, null, 2)}\n`,
+			"utf-8",
+		);
+		assert.deepEqual([...(await scopedProviders(dir))].sort(), ["orcarouter", "tlc-spark"]);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test("extendModelScope folds patterns in once and records providers", async () => {
+	const dir = await scratch();
+	try {
+		await writeFile(
+			join(dir, "settings.json"),
+			`${JSON.stringify({ enabledModels: ["tlc-spark/TLC-Spark"] }, null, 2)}\n`,
+			"utf-8",
+		);
+		assert.equal(
+			await extendModelScope(dir, { patterns: ["orcarouter/openai/gpt-4o-mini"], providers: ["orcarouter"] }),
+			true,
+			"first extension writes",
+		);
+		const raw = JSON.parse(await readFile(join(dir, "settings.json"), "utf-8"));
+		assert.deepEqual(raw.enabledModels, ["tlc-spark/TLC-Spark", "orcarouter/openai/gpt-4o-mini"]);
+		assert.deepEqual(raw[SCOPED_PROVIDERS_KEY], ["orcarouter"]);
+		assert.equal(
+			await extendModelScope(dir, { patterns: ["orcarouter/openai/gpt-4o-mini"], providers: ["orcarouter"] }),
+			false,
+			"repeat is a no-op",
+		);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+test("extendModelScope never seeds an absent scope on its own", async () => {
+	const dir = await scratch();
+	try {
+		// Recording a provider with no patterns must not invent an enabledModels
+		// key — seeding is the launcher's job, and only when a scope exists is
+		// the student's curated list authoritative.
+		assert.equal(await extendModelScope(dir, { providers: ["tlc-spark"] }), true);
+		const raw = JSON.parse(await readFile(join(dir, "settings.json"), "utf-8"));
+		assert.equal(raw.enabledModels, undefined);
+		assert.deepEqual(raw[SCOPED_PROVIDERS_KEY], ["tlc-spark"]);
 	} finally {
 		await rm(dir, { recursive: true, force: true });
 	}

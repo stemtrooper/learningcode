@@ -556,6 +556,11 @@ often, and a student's install must not change underneath them mid-term.
 
 ## Changelog
 
+* **0.16.1** — the models of a provider you sign into *after* your first
+  launch (`/login` or `learningcode --login-provider`) now appear in `/model` on
+  the next start, instead of staying hidden until you run `/scoped-models` by
+  hand. Providers you have already seen are left alone, so a model you unchecked
+  is never re-added.
 * **0.16.0** — OrcaRouter is a provider you can log in to from learningcode:
   `learningcode --login-provider orcarouter` (your `sk-orca-` key is entered
   without echo), or `/login` inside learningcode. Its catalogue is fetched live
