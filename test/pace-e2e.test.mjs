@@ -21,7 +21,7 @@ import { resolvePiEntry } from "../lib/pi.mjs";
  * because it spawns a real Pi process. The mock stands in for the network, so
  * it needs no real key. The block decision itself is unit-tested with a stub
  * spawn in test/pace-extension.test.mjs; this verifies the extension loads
- * under real Pi 1.3.0 and its `tool_call` hook actually stops a write.
+ * under real Pi 1.5.0 and its `tool_call` hook actually stops a write.
  */
 
 const GATED = process.env.LEARNINGCODE_PACE_E2E === "1";

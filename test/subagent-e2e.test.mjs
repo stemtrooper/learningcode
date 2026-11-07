@@ -16,7 +16,7 @@ import { resolvePiEntry } from "../lib/pi.mjs";
  * Gated on LEARNINGCODE_SUBAGENT_E2E=1 (like the remote e2e) because it spawns a
  * real Pi process. It stands a mock OpenAI provider in for the network, so it
  * needs no real key and is deterministic: the one thing being verified is that
- * our argv and our JSON-lines parser match what Pi 1.3.0 actually does. That is
+ * our argv and our JSON-lines parser match what Pi 1.5.0 actually does. That is
  * the surface most likely to break on a Pi upgrade.
  *
  * The parent-side orchestration (gate, modes, undo bridge) is covered by

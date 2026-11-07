@@ -556,6 +556,10 @@ often, and a student's install must not change underneath them mid-term.
 
 ## Changelog
 
+* **0.16.2** — updated to the Pi 1.5.0 runtime. Nothing changes in how you use
+  learningcode: themes, Plan/Build mode, helpers, remote and TLC-Spark quota all
+  behave the same. Streamed answers and large tool calls render faster, and tool
+  arguments are validated against plain JSON Schema.
 * **0.16.1** — the models of a provider you sign into *after* your first
   launch (`/login` or `learningcode --login-provider`) now appear in `/model` on
   the next start, instead of staying hidden until you run `/scoped-models` by

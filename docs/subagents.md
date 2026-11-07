@@ -98,9 +98,9 @@ Each helper is a separate `pi` process:
   a `-p` child.
 - `--no-session` keeps the child out of Pi's session store, so the parent's
   transcript is never polluted.
-- The parser is pinned to what Pi 1.3.0 emits: `message_end` (authoritative),
+- The parser is pinned to what Pi 1.5.0 emits: `message_end` (authoritative),
   `tool_execution_end`, `agent_settled`. Pi's own example still listens for
-  `tool_result_end`, which 1.3.0 no longer sends; do not copy that line.
+  `tool_result_end`, which 1.5.0 no longer sends; do not copy that line.
 
 ---
 
